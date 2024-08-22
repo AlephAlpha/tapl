@@ -1,0 +1,9 @@
+[package]
+name = "arith"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+either = { workspace = true }
+nom = { workspace = true }
+rustyline = { workspace = true }
