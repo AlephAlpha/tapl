@@ -1,47 +1,45 @@
-use crate::syntax::Term;
-use either::{Either, Left, Right};
+use crate::{
+    error::{Error, Result},
+    syntax::Term,
+};
+use std::rc::Rc;
 
 impl Term {
     fn is_numeric_val(&self) -> bool {
         match self {
-            Term::Zero => true,
-            Term::Succ(t) => t.is_numeric_val(),
+            Self::Zero => true,
+            Self::Succ(t) => t.is_numeric_val(),
             _ => false,
         }
     }
 
-    // Returns either the next term or the same term if no reduction is possible.
-    pub fn eval1(self) -> Either<Term, Term> {
+    pub fn eval1(&self) -> Result<Rc<Self>> {
         match self {
-            Term::If(cond, then, else_) => match *cond {
-                Term::True => Left(*then),
-                Term::False => Left(*else_),
-                _ => cond
-                    .eval1()
-                    .map(|cond_| Term::If(Box::new(cond_), then, else_)),
+            Self::If(cond, then, else_) => match cond.as_ref() {
+                Self::True => Ok(then.clone()),
+                Self::False => Ok(else_.clone()),
+                _ => Ok(Self::if_(cond.eval1()?, then.clone(), else_.clone())),
             },
-            Term::Succ(t) => t.eval1().map(|t_| Term::Succ(Box::new(t_))),
-            Term::Pred(t) => match *t {
-                Term::Zero => Left(Term::Zero),
-                Term::Succ(t) if t.is_numeric_val() => Left(*t),
-                _ => t.eval1().map(|t_| Term::Pred(Box::new(t_))),
+            Self::Succ(t) => Ok(Self::succ(t.eval1()?)),
+            Self::Pred(t) => match t.as_ref() {
+                Self::Zero => Ok(Self::zero()),
+                Self::Succ(t) if t.is_numeric_val() => Ok(t.clone()),
+                _ => Ok(Self::pred(t.eval1()?)),
             },
-            Term::IsZero(t) => match *t {
-                Term::Zero => Left(Term::True),
-                Term::Succ(t) if t.is_numeric_val() => Left(Term::False),
-                _ => t.eval1().map(|t_| Term::IsZero(Box::new(t_))),
+            Self::IsZero(t) => match t.as_ref() {
+                Self::Zero => Ok(Self::true_()),
+                Self::Succ(t) if t.is_numeric_val() => Ok(Self::false_()),
+                _ => Ok(Self::is_zero(t.eval1()?)),
             },
-            _ => Right(self),
+            _ => Err(Error::NoRuleApplies),
         }
     }
 
-    pub fn eval(self) -> Term {
-        let mut t = self;
-        loop {
-            match t.eval1() {
-                Left(t_) => t = t_,
-                Right(t_) => return t_,
-            }
+    pub fn eval(self: &Rc<Self>) -> Rc<Self> {
+        let mut t = Rc::clone(self);
+        while let Ok(t_) = t.eval1() {
+            t = t_;
         }
+        t
     }
 }
