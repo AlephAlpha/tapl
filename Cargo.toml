@@ -1,5 +1,5 @@
 [workspace]
-members = ["arith", "untyped", "util"]
+members = ["arith", "untyped", "util", "util-derive", "fulluntyped"]
 
 resolver = "2"
 
@@ -8,3 +8,4 @@ chumsky = "0.9.3"
 rustyline = { version = "14.0.0", features = ["derive"] }
 thiserror = "1.0.63"
 util = { path = "util" }
+util-derive = { path = "util-derive" }

@@ -2,13 +2,14 @@ use std::{
     fmt::{self, Display, Formatter},
     rc::Rc,
 };
+use util::RcTerm;
 
 pub const KEYWORDS: &[&str] = &[
     "true", "false", "if", "then", "else", "succ", "pred", "iszero",
 ];
 pub const COMMANDS: &[&str] = &["eval", "eval1"];
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, RcTerm)]
 pub enum Term {
     True,
     False,
@@ -19,39 +20,16 @@ pub enum Term {
     IsZero(Rc<Self>),
 }
 
-// TODO: make a macro for generating these functions
 impl Term {
-    pub fn true_() -> Rc<Self> {
-        Rc::new(Self::True)
+    pub fn is_int(&self) -> bool {
+        match self {
+            Self::Zero => true,
+            Self::Succ(t) => t.is_int(),
+            _ => false,
+        }
     }
 
-    pub fn false_() -> Rc<Self> {
-        Rc::new(Self::False)
-    }
-
-    pub fn if_(cond: Rc<Self>, then: Rc<Self>, else_: Rc<Self>) -> Rc<Self> {
-        Rc::new(Self::If(cond, then, else_))
-    }
-
-    pub fn zero() -> Rc<Self> {
-        Rc::new(Self::Zero)
-    }
-
-    pub fn succ(t: Rc<Self>) -> Rc<Self> {
-        Rc::new(Self::Succ(t))
-    }
-
-    pub fn pred(t: Rc<Self>) -> Rc<Self> {
-        Rc::new(Self::Pred(t))
-    }
-
-    pub fn is_zero(t: Rc<Self>) -> Rc<Self> {
-        Rc::new(Self::IsZero(t))
-    }
-}
-
-impl Term {
-    pub fn to_num(&self) -> Option<u64> {
+    pub fn to_int(&self) -> Option<u64> {
         let mut t = self;
         let mut n = 0;
         while let Self::Succ(t_) = t {
@@ -65,7 +43,7 @@ impl Term {
         }
     }
 
-    pub fn from_num(n: u64) -> Rc<Self> {
+    pub fn from_int(n: u64) -> Rc<Self> {
         let mut t = Self::zero();
         for _ in 0..n {
             t = Self::succ(t);
@@ -76,24 +54,18 @@ impl Term {
 
 impl Term {
     fn fmt_atom(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if let Some(n) = self.to_num() {
-            return write!(f, "{n}");
-        }
-
         match self {
             Self::True => write!(f, "true"),
             Self::False => write!(f, "false"),
+            Self::Zero => write!(f, "0"),
+            Self::Succ(t) if t.is_int() => write!(f, "{}", t.to_int().unwrap() + 1),
             t => write!(f, "({t})"),
         }
     }
 
     fn fmt_app(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if let Some(n) = self.to_num() {
-            return write!(f, "{n}");
-        }
-
         match self {
-            Self::Succ(t) => {
+            Self::Succ(t) if !t.is_int() => {
                 write!(f, "succ ")?;
                 t.fmt_atom(f)
             }
@@ -112,10 +84,9 @@ impl Term {
 
 impl Display for Term {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if let Self::If(cond, then, else_) = self {
-            write!(f, "if {cond} then {then} else {else_}")
-        } else {
-            self.fmt_app(f)
+        match self {
+            Self::If(t1, t2, t3) => write!(f, "if {t1} then {t2} else {t3}"),
+            _ => self.fmt_app(f),
         }
     }
 }
@@ -124,4 +95,5 @@ impl Display for Term {
 pub enum Command {
     Eval1(Rc<Term>),
     Eval(Rc<Term>),
+    Noop,
 }

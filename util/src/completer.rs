@@ -1,12 +1,13 @@
 use rustyline::{completion::Completer, Context, Helper, Highlighter, Hinter, Result, Validator};
+use std::collections::BTreeSet;
 
 /// A rustyline completer that completes based on a list of keywords.
 ///
 /// Commands are also suggested when the cursor is at the beginning of the line.
 #[derive(Helper, Highlighter, Hinter, Validator)]
 pub struct KeywordsCompleter {
-    keywords: Vec<String>,
-    commands: Vec<String>,
+    keywords: BTreeSet<String>,
+    commands: BTreeSet<String>,
 }
 
 impl KeywordsCompleter {
@@ -21,7 +22,7 @@ impl KeywordsCompleter {
     }
 
     pub fn add_keyword(&mut self, keyword: impl Into<String>) {
-        self.keywords.push(keyword.into());
+        self.keywords.insert(keyword.into());
     }
 
     pub fn remove_keyword(&mut self, keyword: impl AsRef<str>) {

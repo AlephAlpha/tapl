@@ -1,5 +1,5 @@
 [package]
-name = "arith"
+name = "fulluntyped"
 version = "0.0.0"
 edition = "2021"
 

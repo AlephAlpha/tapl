@@ -2,7 +2,6 @@
 #![warn(clippy::unnested_or_patterns)]
 #![warn(clippy::uninlined_format_args)]
 
-mod error;
 mod eval;
 mod parser;
 mod syntax;
@@ -34,10 +33,11 @@ fn main() -> Result<()> {
                                 Ok(t_) => println!("{t_}"),
                                 Err(err) => eprintln!("Evaluation error: {err}"),
                             },
-                            Command::Bind(name) => {
-                                ctx.add_name(&name);
-                                rl.helper_mut().unwrap().add_keyword(name);
+                            Command::Bind(x) => {
+                                ctx.add_name(&x);
+                                rl.helper_mut().unwrap().add_keyword(x);
                             }
+                            Command::Noop => {}
                         };
                     }
                     Err(errs) => {

@@ -1,24 +1,18 @@
-use crate::{
-    error::{Error, Result},
-    syntax::Term,
-};
+use crate::syntax::Term;
 use std::rc::Rc;
+use util::{Error, Result};
 
 impl Term {
     fn is_numeric_val(&self) -> bool {
-        match self {
-            Self::Zero => true,
-            Self::Succ(t) => t.is_numeric_val(),
-            _ => false,
-        }
+        self.is_int()
     }
 
     pub fn eval1(&self) -> Result<Rc<Self>> {
         match self {
-            Self::If(cond, then, else_) => match cond.as_ref() {
-                Self::True => Ok(then.clone()),
-                Self::False => Ok(else_.clone()),
-                _ => Ok(Self::if_(cond.eval1()?, then.clone(), else_.clone())),
+            Self::If(t1, t2, t3) => match t1.as_ref() {
+                Self::True => Ok(t2.clone()),
+                Self::False => Ok(t3.clone()),
+                _ => Ok(Self::if_(t1.eval1()?, t2.clone(), t3.clone())),
             },
             Self::Succ(t) => Ok(Self::succ(t.eval1()?)),
             Self::Pred(t) => match t.as_ref() {

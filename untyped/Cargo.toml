@@ -6,5 +6,4 @@ edition = "2021"
 [dependencies]
 chumsky = { workspace = true }
 rustyline = { workspace = true }
-thiserror = { workspace = true }
 util = { workspace = true }

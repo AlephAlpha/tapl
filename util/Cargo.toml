@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 rustyline = { workspace = true }
+thiserror = { workspace = true }
+util-derive = { workspace = true }

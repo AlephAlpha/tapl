@@ -8,15 +8,15 @@ impl Term {
             let true_ = text::keyword("true").to(Self::true_());
             let false_ = text::keyword("false").to(Self::false_());
 
-            let number = text::int(10).try_map(|s: String, span| {
+            let int = text::int(10).try_map(|s: String, span| {
                 s.parse()
-                    .map(Self::from_num)
+                    .map(Self::from_int)
                     .map_err(|e| Simple::custom(span, e.to_string()))
             });
 
             let parens = term.clone().delimited_by(just('('), just(')'));
 
-            let atom = true_.or(false_).or(number).or(parens);
+            let atom = choice((true_, false_, int, parens));
 
             let succ = text::keyword("succ")
                 .ignore_then(term.clone().padded())
@@ -30,7 +30,7 @@ impl Term {
                 .ignore_then(term.clone().padded())
                 .map(Self::is_zero);
 
-            let app = atom.or(succ).or(pred).or(is_zero);
+            let app = choice((atom, succ, pred, is_zero));
 
             let if_ = text::keyword("if")
                 .ignore_then(term.clone().padded())
@@ -38,7 +38,7 @@ impl Term {
                 .then(term.clone().padded())
                 .then_ignore(text::keyword("else"))
                 .then(term.clone().padded())
-                .map(|((cond, then), else_)| Self::if_(cond, then, else_));
+                .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
             app.or(if_).padded()
         })
@@ -60,8 +60,8 @@ impl Command {
             .then(text::keyword("eval"))
             .ignore_then(Term::parser())
             .map(Self::Eval);
+        let noop = text::whitespace().to(Self::Noop);
 
-        let command = eval1.or(eval).or(term);
-        command.then_ignore(end())
+        choice((eval1, eval, noop, term)).then_ignore(end())
     }
 }

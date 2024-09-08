@@ -1,11 +1,17 @@
-use crate::syntax::{Command, Term};
+use crate::syntax::{Command, Term, KEYWORDS};
 use chumsky::prelude::*;
 use std::rc::Rc;
 
 impl Term {
     fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> {
         recursive(|term| {
-            let var = text::ident().map(Self::var);
+            let var = text::ident().try_map(|s: String, span| {
+                if KEYWORDS.contains(&s.as_str()) {
+                    Err(Simple::custom(span, format!("unexpected keyword: {s}")))
+                } else {
+                    Ok(Self::var(s))
+                }
+            });
 
             let parens = term.clone().delimited_by(just('('), just(')'));
 
@@ -43,8 +49,8 @@ impl Command {
             .then(text::keyword("bind"))
             .ignore_then(text::ident().padded())
             .map(Self::Bind);
+        let noop = text::whitespace().to(Self::Noop);
 
-        let command = eval1.or(eval).or(bind).or(term);
-        command.then_ignore(end())
+        choice((eval1, eval, bind, term, noop)).then_ignore(end())
     }
 }
