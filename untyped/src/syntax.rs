@@ -2,7 +2,7 @@ use std::{
     fmt::{self, Display, Formatter},
     rc::Rc,
 };
-use util::{self, RcTerm, Result};
+use util::{error::Result, RcTerm};
 
 pub const KEYWORDS: &[&str] = &["lambda"];
 pub const COMMANDS: &[&str] = &["eval", "eval1", "bind"];

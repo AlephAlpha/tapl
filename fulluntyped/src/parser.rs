@@ -5,44 +5,14 @@ use std::rc::Rc;
 impl Term {
     fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> {
         recursive(|term| {
-            let var = text::ident().try_map(|s: String, span| {
-                if KEYWORDS.contains(&s.as_str()) {
-                    Err(Simple::custom(span, format!("unexpected keyword: {s}")))
-                } else {
-                    Ok(Self::var(s))
-                }
-            });
+            let var = util::parser::ident(KEYWORDS.iter().copied()).map(Self::var);
 
             let true_ = text::keyword("true").to(Self::true_());
             let false_ = text::keyword("false").to(Self::false_());
-            let escape = just('\\').ignore_then(one_of("\\\"nrt").map(|c| match c {
-                'n' => '\n',
-                't' => '\t',
-                'r' => '\r',
-                c => c,
-            }));
 
-            let string = just('"')
-                .ignore_then(escape.or(none_of("\\\"")).repeated())
-                .then_ignore(just('"'))
-                .collect::<String>()
-                .map(Self::string);
-
-            let float = text::int(10)
-                .chain::<char, _, _>(just('.'))
-                .chain::<char, _, _>(text::digits(10))
-                .collect::<String>()
-                .try_map(|s: String, span| {
-                    s.parse()
-                        .map(Self::float)
-                        .map_err(|e| Simple::custom(span, e.to_string()))
-                });
-
-            let int = text::int(10).try_map(|s: String, span| {
-                s.parse()
-                    .map(Self::from_int)
-                    .map_err(|e| Simple::custom(span, e.to_string()))
-            });
+            let string = util::parser::string().map(Self::string);
+            let float = util::parser::float().map(Self::float);
+            let int = util::parser::int().map(Self::from_int);
 
             let field = text::ident()
                 .padded()

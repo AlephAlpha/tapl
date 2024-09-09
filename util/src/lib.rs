@@ -4,9 +4,9 @@
 
 mod completer;
 mod context;
-mod error;
+pub mod error;
+pub mod parser;
 
 pub use completer::KeywordsCompleter;
 pub use context::{BindingShift, Context};
-pub use error::{Error, Result};
 pub use util_derive::RcTerm;

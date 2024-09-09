@@ -18,7 +18,7 @@ fn main() -> Result<()> {
     let mut ctx = Context::new();
 
     loop {
-        let input = rl.readline("untyped> ");
+        let input = rl.readline("fulluntyped> ");
         match input {
             Ok(line) => {
                 rl.add_history_entry(&line).ok();

@@ -1,6 +1,6 @@
 use crate::syntax::{Binding, Context, DeBruijnTerm, Term};
 use std::rc::Rc;
-use util::{Error, Result};
+use util::error::{Error, Result};
 
 impl DeBruijnTerm {
     fn is_val(&self, ctx: &Context) -> bool {

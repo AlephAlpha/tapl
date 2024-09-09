@@ -56,8 +56,12 @@ impl Command {
             .then(text::keyword("eval"))
             .ignore_then(Term::parser())
             .map(Self::Eval);
+        let type_ = just(':')
+            .then(text::keyword("type"))
+            .ignore_then(Term::parser())
+            .map(Self::Type);
         let noop = text::whitespace().to(Self::Noop);
 
-        choice((eval1, eval, term, noop)).then_ignore(end())
+        choice((eval1, eval, type_, term, noop)).then_ignore(end())
     }
 }

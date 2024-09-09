@@ -5,13 +5,7 @@ use std::rc::Rc;
 impl Term {
     fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> {
         recursive(|term| {
-            let var = text::ident().try_map(|s: String, span| {
-                if KEYWORDS.contains(&s.as_str()) {
-                    Err(Simple::custom(span, format!("unexpected keyword: {s}")))
-                } else {
-                    Ok(Self::var(s))
-                }
-            });
+            let var = util::parser::ident(KEYWORDS.iter().copied()).map(Self::var);
 
             let parens = term.clone().delimited_by(just('('), just(')'));
 

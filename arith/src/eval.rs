@@ -1,6 +1,6 @@
 use crate::syntax::Term;
 use std::rc::Rc;
-use util::{Error, Result};
+use util::error::{Error, Result};
 
 impl Term {
     fn is_numeric_val(&self) -> bool {

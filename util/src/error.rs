@@ -9,6 +9,8 @@ pub enum Error {
     VariableLookupFailure(usize, usize),
     #[error("No rule applies")]
     NoRuleApplies,
+    #[error("{0}")]
+    TypeError(String),
 }
 
 pub type Result<T, E = Error> = StdResult<T, E>;

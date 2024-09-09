@@ -2,7 +2,7 @@ use std::{
     fmt::{self, Display, Formatter},
     rc::Rc,
 };
-use util::{self, BindingShift, RcTerm, Result};
+use util::{error::Result, BindingShift, RcTerm};
 
 pub const KEYWORDS: &[&str] = &[
     "true",
