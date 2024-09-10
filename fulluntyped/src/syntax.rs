@@ -76,7 +76,7 @@ impl<V> GenTerm<V> {
 }
 
 impl<V: Display> GenTerm<V> {
-    fn fmt_atoms(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt_atom(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::String(s) => write!(f, "{s:?}"),
             Self::Var(x) => write!(f, "{x}"),
@@ -109,7 +109,7 @@ impl<V: Display> GenTerm<V> {
                 t.fmt_path(f)?;
                 write!(f, ".{l}")
             }
-            _ => self.fmt_atoms(f),
+            _ => self.fmt_atom(f),
         }
     }
 
@@ -118,25 +118,25 @@ impl<V: Display> GenTerm<V> {
             Self::App(t1, t2) => {
                 t1.fmt_app(f)?;
                 write!(f, " ")?;
-                t2.fmt_atoms(f)
+                t2.fmt_atom(f)
             }
             Self::Succ(t) if !t.is_int() => {
                 write!(f, "succ ")?;
-                t.fmt_atoms(f)
+                t.fmt_atom(f)
             }
             Self::Pred(t) => {
                 write!(f, "pred ")?;
-                t.fmt_atoms(f)
+                t.fmt_atom(f)
             }
             Self::IsZero(t) => {
                 write!(f, "iszero ")?;
-                t.fmt_atoms(f)
+                t.fmt_atom(f)
             }
             Self::TimesFloat(t1, t2) => {
                 write!(f, "timesfloat ")?;
-                t1.fmt_atoms(f)?;
+                t1.fmt_atom(f)?;
                 write!(f, " ")?;
-                t2.fmt_atoms(f)
+                t2.fmt_atom(f)
             }
             _ => self.fmt_path(f),
         }

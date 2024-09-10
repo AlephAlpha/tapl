@@ -15,25 +15,25 @@ impl Term {
             let atom = choice((true_, false_, int, parens));
 
             let succ = text::keyword("succ")
-                .ignore_then(term.clone().padded())
+                .ignore_then(term.clone())
                 .map(Self::succ);
 
             let pred = text::keyword("pred")
-                .ignore_then(term.clone().padded())
+                .ignore_then(term.clone())
                 .map(Self::pred);
 
             let is_zero = text::keyword("iszero")
-                .ignore_then(term.clone().padded())
+                .ignore_then(term.clone())
                 .map(Self::is_zero);
 
             let app = choice((atom, succ, pred, is_zero));
 
             let if_ = text::keyword("if")
-                .ignore_then(term.clone().padded())
+                .ignore_then(term.clone())
                 .then_ignore(text::keyword("then"))
-                .then(term.clone().padded())
+                .then(term.clone())
                 .then_ignore(text::keyword("else"))
-                .then(term.clone().padded())
+                .then(term.clone())
                 .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
             app.or(if_).padded()

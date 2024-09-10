@@ -71,11 +71,11 @@ impl Term {
             let app = choice((succ, pred, is_zero, times_float, app_));
 
             let if_ = text::keyword("if")
-                .ignore_then(term.clone().padded())
+                .ignore_then(term.clone())
                 .then_ignore(text::keyword("then"))
-                .then(term.clone().padded())
+                .then(term.clone())
                 .then_ignore(text::keyword("else"))
-                .then(term.clone().padded())
+                .then(term.clone())
                 .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
             let abs = text::keyword("lambda")

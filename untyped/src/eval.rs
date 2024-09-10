@@ -1,14 +1,10 @@
-use crate::syntax::{Binding, Context, DeBruijnTerm, Term};
+use crate::syntax::{Context, DeBruijnTerm, Term};
 use std::rc::Rc;
 use util::error::{Error, Result};
 
 impl DeBruijnTerm {
-    fn is_val(&self, ctx: &Context) -> bool {
-        match self {
-            Self::Abs(_, _) => true,
-            Self::Var(i) => matches!(ctx.get_binding(*i), Ok(Binding::Name)),
-            _ => false,
-        }
+    const fn is_val(&self, _ctx: &Context) -> bool {
+        matches!(self, Self::Abs(_, _))
     }
 
     pub fn eval1(&self, ctx: &Context) -> Result<Rc<Self>> {

@@ -7,11 +7,10 @@ impl DeBruijnTerm {
         self.is_int()
     }
 
-    fn is_val(&self, ctx: &Context) -> bool {
+    fn is_val(&self, _ctx: &Context) -> bool {
         match self {
             Self::String(_) | Self::Float(_) | Self::True | Self::False | Self::Abs(_, _) => true,
-            Self::Record(fields) => fields.iter().all(|(_, t)| t.is_val(ctx)),
-            Self::Var(i) => matches!(ctx.get_binding_shifting(*i), Ok(Binding::Name)),
+            Self::Record(fields) => fields.iter().all(|(_, t)| t.is_val(_ctx)),
             t => t.is_numeric_val(),
         }
     }

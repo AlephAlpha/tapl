@@ -1,5 +1,5 @@
 [workspace]
-members = ["arith", "untyped", "util", "util-derive", "fulluntyped", "tyarith"]
+members = ["arith", "untyped", "util", "util-derive", "fulluntyped", "tyarith", "simplebool"]
 
 resolver = "2"
 

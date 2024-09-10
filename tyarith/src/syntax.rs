@@ -7,21 +7,12 @@ use util::RcTerm;
 pub const KEYWORDS: &[&str] = &[
     "true", "false", "if", "then", "else", "succ", "pred", "iszero", "Bool", "Nat",
 ];
-pub const COMMANDS: &[&str] = &["eval", "eval1", "type"];
+pub const COMMANDS: &[&str] = &["eval", "eval1", "bind", "type"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ty {
     Bool,
     Nat,
-}
-
-impl Display for Ty {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Bool => write!(f, "Bool"),
-            Self::Nat => write!(f, "Nat"),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, RcTerm)]
@@ -64,6 +55,15 @@ impl Term {
             t = Self::succ(t);
         }
         t
+    }
+}
+
+impl Display for Ty {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Bool => write!(f, "Bool"),
+            Self::Nat => write!(f, "Nat"),
+        }
     }
 }
 
