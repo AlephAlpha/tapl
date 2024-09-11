@@ -5,7 +5,7 @@ use std::{
 use util::{error::Result, RcTerm};
 
 pub const KEYWORDS: &[&str] = &["true", "false", "if", "then", "else", "lambda", "Bool"];
-pub const COMMANDS: &[&str] = &["eval", "eval1", "type"];
+pub const COMMANDS: &[&str] = &["eval", "eval1", "bind", "type"];
 
 #[derive(Clone, Debug, PartialEq, RcTerm)]
 pub enum Ty {
@@ -14,7 +14,7 @@ pub enum Ty {
 }
 
 #[derive(Clone, Debug, PartialEq, RcTerm)]
-pub enum GenTerm<V> {
+pub enum Term<V = String> {
     Var(#[rc_term(into)] V),
     Abs(#[rc_term(into)] String, Rc<Ty>, Rc<Self>),
     App(Rc<Self>, Rc<Self>),
@@ -23,8 +23,7 @@ pub enum GenTerm<V> {
     If(Rc<Self>, Rc<Self>, Rc<Self>),
 }
 
-pub type Term = GenTerm<String>;
-pub type DeBruijnTerm = GenTerm<usize>;
+pub type DeBruijnTerm = Term<usize>;
 
 impl Ty {
     fn fmt_atom(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -52,7 +51,7 @@ impl Display for Ty {
     }
 }
 
-impl<V: Display> GenTerm<V> {
+impl<V: Display> Term<V> {
     fn fmt_atom(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Var(x) => write!(f, "{x}"),
@@ -74,7 +73,7 @@ impl<V: Display> GenTerm<V> {
     }
 }
 
-impl<V: Display> Display for GenTerm<V> {
+impl<V: Display> Display for Term<V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::If(t1, t2, t3) => {
@@ -101,8 +100,7 @@ pub type Context = util::Context<Binding>;
 pub enum Command {
     Eval1(Rc<Term>),
     Eval(Rc<Term>),
-    BindName(String),
-    BindVar(String, Rc<Ty>),
+    Bind(String, Binding),
     Type(Rc<Term>),
     Noop,
 }

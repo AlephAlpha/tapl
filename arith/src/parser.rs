@@ -3,7 +3,7 @@ use chumsky::prelude::*;
 use std::rc::Rc;
 
 impl Term {
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> {
+    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
         recursive(|term| {
             let true_ = text::keyword("true").to(Self::true_());
             let false_ = text::keyword("false").to(Self::false_());

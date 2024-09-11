@@ -1,11 +1,15 @@
-use crate::syntax::{Command, Term, KEYWORDS};
+use crate::syntax::{Binding, Command, Term, KEYWORDS};
 use chumsky::prelude::*;
 use std::rc::Rc;
 
 impl Term {
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> {
+    fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+        util::parser::ident(KEYWORDS.iter().copied())
+    }
+
+    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
         recursive(|term| {
-            let var = util::parser::ident(KEYWORDS.iter().copied()).map(Self::var);
+            let var = Self::ident().map(Self::var);
 
             let true_ = text::keyword("true").to(Self::true_());
             let false_ = text::keyword("false").to(Self::false_());
@@ -35,37 +39,35 @@ impl Term {
 
             let parens = term.clone().delimited_by(just('('), just(')'));
 
-            let atom = choice((true_, false_, string, float, int, record, parens, var));
+            let atom = choice((true_, false_, string, float, int, record, parens, var)).padded();
 
             let path = atom
                 .clone()
                 .then(
                     just('.')
-                        .ignore_then(text::ident().or(text::int(10)))
+                        .ignore_then(text::ident().or(text::int(10)).padded())
                         .repeated(),
                 )
-                .foldl(Self::proj);
+                .foldl(Self::proj)
+                .padded();
 
-            let app_ = path
-                .clone()
-                .then(path.clone().padded().repeated())
-                .foldl(Self::app);
+            let app_ = path.clone().then(path.clone().repeated()).foldl(Self::app);
 
             let succ = text::keyword("succ")
-                .ignore_then(path.clone().padded())
+                .ignore_then(path.clone())
                 .map(Self::succ);
 
             let pred = text::keyword("pred")
-                .ignore_then(path.clone().padded())
+                .ignore_then(path.clone())
                 .map(Self::pred);
 
             let is_zero = text::keyword("iszero")
-                .ignore_then(path.clone().padded())
+                .ignore_then(path.clone())
                 .map(Self::is_zero);
 
             let times_float = text::keyword("timesfloat")
-                .ignore_then(path.clone().padded())
-                .then(path.clone().padded())
+                .ignore_then(path.clone())
+                .then(path.clone())
                 .map(|(t1, t2)| Self::times_float(t1, t2));
 
             let app = choice((succ, pred, is_zero, times_float, app_));
@@ -79,13 +81,13 @@ impl Term {
                 .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
             let abs = text::keyword("lambda")
-                .ignore_then(text::ident().padded())
+                .ignore_then(Self::ident().padded())
                 .then_ignore(just('.'))
                 .then(term.clone())
                 .map(|(x, t)| Self::abs(x, t));
 
             let let_ = text::keyword("let")
-                .ignore_then(text::ident().padded())
+                .ignore_then(Self::ident().padded())
                 .then_ignore(just('='))
                 .then(term.clone())
                 .then_ignore(text::keyword("in"))
@@ -94,6 +96,15 @@ impl Term {
 
             choice((if_, abs, let_, app)).padded()
         })
+    }
+}
+
+impl Binding {
+    fn parser() -> impl Parser<char, Self, Error = Simple<char>> {
+        let name = empty().to(Self::Name);
+        let term = just('=').ignore_then(Term::parser()).map(Self::TermAbb);
+
+        term.or(name).padded()
     }
 }
 
@@ -114,15 +125,9 @@ impl Command {
             .map(Self::Eval);
         let bind = just(':')
             .then(text::keyword("bind"))
-            .ignore_then(text::ident().padded())
-            .then(just('=').ignore_then(Term::parser()).or_not())
-            .map(|(x, t)| {
-                if let Some(t) = t {
-                    Self::BindTerm(x, t)
-                } else {
-                    Self::BindName(x)
-                }
-            });
+            .ignore_then(Term::ident().padded())
+            .then(Binding::parser())
+            .map(|(x, b)| Self::Bind(x, b));
         let noop = text::whitespace().to(Self::Noop);
 
         choice((eval1, eval, bind, term, noop)).then_ignore(end())

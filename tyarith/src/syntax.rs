@@ -7,7 +7,7 @@ use util::RcTerm;
 pub const KEYWORDS: &[&str] = &[
     "true", "false", "if", "then", "else", "succ", "pred", "iszero", "Bool", "Nat",
 ];
-pub const COMMANDS: &[&str] = &["eval", "eval1", "bind", "type"];
+pub const COMMANDS: &[&str] = &["eval", "eval1", "type"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ty {

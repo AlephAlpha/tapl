@@ -33,7 +33,7 @@ fn main() -> Result<()> {
                                 Ok(t_) => println!("{t_}"),
                                 Err(err) => eprintln!("Evaluation error: {err}"),
                             },
-                            Command::Bind(x) => {
+                            Command::Bind(x, _) => {
                                 ctx.add_name(&x);
                                 rl.helper_mut().unwrap().add_keyword(x);
                             }

@@ -1,22 +1,21 @@
-use crate::syntax::{Command, Term, Ty, KEYWORDS};
+use crate::syntax::{Binding, Command, Term, Ty, KEYWORDS};
 use chumsky::prelude::*;
 use std::rc::Rc;
 
 impl Ty {
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> {
+    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
         recursive(|ty| {
-            let bool_ = text::keyword("Bool").to(Self::bool());
+            let bool = text::keyword("Bool").to(Self::bool());
 
             let parens = ty.clone().delimited_by(just('('), just(')'));
 
-            let atom = bool_.or(parens);
+            let atom = bool.or(parens).padded();
 
             let arrow = atom
                 .clone()
-                .padded()
                 .then_ignore(just("->"))
                 .repeated()
-                .then(atom.padded())
+                .then(atom)
                 .foldr(Self::arr);
 
             arrow.padded()
@@ -25,7 +24,7 @@ impl Ty {
 }
 
 impl Term {
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> {
+    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
         recursive(|term| {
             let var = util::parser::ident(KEYWORDS.iter().copied()).map(Self::var);
 
@@ -62,6 +61,15 @@ impl Term {
     }
 }
 
+impl Binding {
+    fn parser() -> impl Parser<char, Self, Error = Simple<char>> {
+        let name = empty().to(Self::Name);
+        let var = just(':').ignore_then(Ty::parser()).map(Self::Var);
+
+        var.or(name).padded()
+    }
+}
+
 impl Command {
     pub fn parse(input: &str) -> Result<Self, Vec<Simple<char>>> {
         Self::parser().parse(input)
@@ -80,14 +88,8 @@ impl Command {
         let bind = just(':')
             .then(text::keyword("bind"))
             .ignore_then(text::ident().padded())
-            .then(just(':').ignore_then(Ty::parser()).or_not())
-            .map(|(x, ty)| {
-                if let Some(ty) = ty {
-                    Self::BindVar(x, ty)
-                } else {
-                    Self::BindName(x)
-                }
-            });
+            .then(Binding::parser())
+            .map(|(x, b)| Self::Bind(x, b));
         let type_ = just(':')
             .then(text::keyword("type"))
             .ignore_then(Term::parser())

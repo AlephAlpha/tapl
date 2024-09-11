@@ -8,16 +8,15 @@ pub const KEYWORDS: &[&str] = &["lambda"];
 pub const COMMANDS: &[&str] = &["eval", "eval1", "bind"];
 
 #[derive(Clone, Debug, PartialEq, RcTerm)]
-pub enum GenTerm<V> {
+pub enum Term<V = String> {
     Var(#[rc_term(into)] V),
     Abs(#[rc_term(into)] String, Rc<Self>),
     App(Rc<Self>, Rc<Self>),
 }
 
-pub type Term = GenTerm<String>;
-pub type DeBruijnTerm = GenTerm<usize>;
+pub type DeBruijnTerm = Term<usize>;
 
-impl<V: Display> GenTerm<V> {
+impl<V: Display> Term<V> {
     fn fmt_atom(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Var(x) => write!(f, "{x}"),
@@ -37,7 +36,7 @@ impl<V: Display> GenTerm<V> {
     }
 }
 
-impl<V: Display> Display for GenTerm<V> {
+impl<V: Display> Display for Term<V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Abs(x, t) => {
@@ -60,7 +59,7 @@ pub type Context = util::Context<Binding>;
 pub enum Command {
     Eval1(Rc<Term>),
     Eval(Rc<Term>),
-    Bind(String),
+    Bind(String, Binding),
     Noop,
 }
 

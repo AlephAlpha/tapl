@@ -1,20 +1,24 @@
-use crate::syntax::{Command, Term, KEYWORDS};
+use crate::syntax::{Binding, Command, Term, KEYWORDS};
 use chumsky::prelude::*;
 use std::rc::Rc;
 
 impl Term {
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> {
+    fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+        util::parser::ident(KEYWORDS.iter().copied())
+    }
+
+    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
         recursive(|term| {
-            let var = util::parser::ident(KEYWORDS.iter().copied()).map(Self::var);
+            let var = Self::ident().map(Self::var);
 
             let parens = term.clone().delimited_by(just('('), just(')'));
 
-            let atom = var.or(parens);
+            let atom = var.or(parens).padded();
 
-            let app = atom.clone().then(atom.padded().repeated()).foldl(Self::app);
+            let app = atom.clone().then(atom.repeated()).foldl(Self::app);
 
             let abs = text::keyword("lambda")
-                .ignore_then(text::ident().padded())
+                .ignore_then(Self::ident().padded())
                 .then_ignore(just('.'))
                 .then(term.clone())
                 .map(|(x, t)| Self::abs(x, t));
@@ -41,8 +45,8 @@ impl Command {
             .map(Self::Eval);
         let bind = just(':')
             .then(text::keyword("bind"))
-            .ignore_then(text::ident().padded())
-            .map(Self::Bind);
+            .ignore_then(Term::ident().padded())
+            .map(|x| Self::Bind(x, Binding::Name));
         let noop = text::whitespace().to(Self::Noop);
 
         choice((eval1, eval, bind, term, noop)).then_ignore(end())

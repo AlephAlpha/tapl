@@ -7,7 +7,7 @@ mod parser;
 mod syntax;
 
 use rustyline::{history::DefaultHistory, Editor, Result};
-use syntax::{Binding, Command, Context, COMMANDS, KEYWORDS};
+use syntax::{Command, Context, COMMANDS, KEYWORDS};
 use util::KeywordsCompleter;
 
 fn main() -> Result<()> {
@@ -33,13 +33,9 @@ fn main() -> Result<()> {
                                 Ok(t_) => println!("{t_}"),
                                 Err(err) => eprintln!("Evaluation error: {err}"),
                             },
-                            Command::BindName(x) => {
-                                ctx.add_name(&x);
-                                rl.helper_mut().unwrap().add_keyword(x);
-                            }
-                            Command::BindTerm(x, t) => match t.to_de_bruijn(&mut ctx) {
-                                Ok(t_) => {
-                                    ctx.add_binding(&x, Binding::TermAbb(t_));
+                            Command::Bind(x, b) => match b.to_de_bruijn(&mut ctx) {
+                                Ok(b_) => {
+                                    ctx.add_binding(&x, b_);
                                     rl.helper_mut().unwrap().add_keyword(x);
                                 }
                                 Err(err) => eprintln!("Binding error: {err}"),
