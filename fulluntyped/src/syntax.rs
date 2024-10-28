@@ -261,43 +261,43 @@ impl BindingShift for DeBruijnBinding {
 }
 
 impl DeBruijnTerm {
-    pub fn to_term(&self, ctx: &mut Context) -> Result<Rc<Term>> {
+    pub fn to_named(&self, ctx: &mut Context) -> Result<Rc<Term>> {
         match self {
             Self::String(s) => Ok(Term::string(s.clone())),
             Self::Var(x) => Ok(Term::var(ctx.index_to_name(*x)?)),
             Self::True => Ok(Term::true_()),
             Self::False => Ok(Term::false_()),
             Self::If(t1, t2, t3) => Ok(Term::if_(
-                t1.to_term(ctx)?,
-                t2.to_term(ctx)?,
-                t3.to_term(ctx)?,
+                t1.to_named(ctx)?,
+                t2.to_named(ctx)?,
+                t3.to_named(ctx)?,
             )),
             Self::Let(x, t1, t2) => Ok(Term::let_(
                 x.clone(),
-                t1.to_term(ctx)?,
-                ctx.with_name(x.clone(), |ctx| t2.to_term(ctx))?,
+                t1.to_named(ctx)?,
+                ctx.with_name(x.clone(), |ctx| t2.to_named(ctx))?,
             )),
             Self::Record(fields) => Ok(Term::record(
                 fields
                     .iter()
-                    .map(|(label, term)| Ok((label.clone(), term.to_term(ctx)?)))
+                    .map(|(label, term)| Ok((label.clone(), term.to_named(ctx)?)))
                     .collect::<Result<Vec<_>>>()?,
             )),
-            Self::Proj(t, l) => Ok(Term::proj(t.to_term(ctx)?, l.clone())),
+            Self::Proj(t, l) => Ok(Term::proj(t.to_named(ctx)?, l.clone())),
             Self::Abs(x, t) => {
                 let name = ctx.pick_fresh_name(x);
                 Ok(Term::abs(
                     name.clone(),
-                    ctx.with_name(name, |ctx| t.to_term(ctx))?,
+                    ctx.with_name(name, |ctx| t.to_named(ctx))?,
                 ))
             }
-            Self::App(t1, t2) => Ok(Term::app(t1.to_term(ctx)?, t2.to_term(ctx)?)),
+            Self::App(t1, t2) => Ok(Term::app(t1.to_named(ctx)?, t2.to_named(ctx)?)),
             Self::Zero => Ok(Term::zero()),
-            Self::Succ(t) => Ok(Term::succ(t.to_term(ctx)?)),
-            Self::Pred(t) => Ok(Term::pred(t.to_term(ctx)?)),
-            Self::IsZero(t) => Ok(Term::is_zero(t.to_term(ctx)?)),
+            Self::Succ(t) => Ok(Term::succ(t.to_named(ctx)?)),
+            Self::Pred(t) => Ok(Term::pred(t.to_named(ctx)?)),
+            Self::IsZero(t) => Ok(Term::is_zero(t.to_named(ctx)?)),
             Self::Float(x) => Ok(Term::float(*x)),
-            Self::TimesFloat(t1, t2) => Ok(Term::times_float(t1.to_term(ctx)?, t2.to_term(ctx)?)),
+            Self::TimesFloat(t1, t2) => Ok(Term::times_float(t1.to_named(ctx)?, t2.to_named(ctx)?)),
         }
     }
 }

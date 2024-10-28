@@ -10,7 +10,7 @@ pub const COMMANDS: &[&str] = &["eval", "eval1", "bind", "type"];
 #[derive(Clone, Debug, PartialEq, RcTerm)]
 pub enum Ty {
     Bool,
-    Arr(Rc<Ty>, Rc<Ty>),
+    Arr(Rc<Self>, Rc<Self>),
 }
 
 #[derive(Clone, Debug, PartialEq, RcTerm)]
@@ -159,7 +159,7 @@ impl DeBruijnTerm {
 }
 
 impl DeBruijnTerm {
-    pub fn to_term(&self, ctx: &mut Context) -> Result<Rc<Term>> {
+    pub fn to_named(&self, ctx: &mut Context) -> Result<Rc<Term>> {
         match self {
             Self::Var(x) => Ok(Term::var(ctx.index_to_name(*x)?)),
             Self::Abs(x, ty, t) => {
@@ -167,16 +167,16 @@ impl DeBruijnTerm {
                 Ok(Term::abs(
                     name.clone(),
                     ty.clone(),
-                    ctx.with_name(name, |ctx| t.to_term(ctx))?,
+                    ctx.with_name(name, |ctx| t.to_named(ctx))?,
                 ))
             }
-            Self::App(t1, t2) => Ok(Term::app(t1.to_term(ctx)?, t2.to_term(ctx)?)),
+            Self::App(t1, t2) => Ok(Term::app(t1.to_named(ctx)?, t2.to_named(ctx)?)),
             Self::True => Ok(Term::true_()),
             Self::False => Ok(Term::false_()),
             Self::If(t1, t2, t3) => Ok(Term::if_(
-                t1.to_term(ctx)?,
-                t2.to_term(ctx)?,
-                t3.to_term(ctx)?,
+                t1.to_named(ctx)?,
+                t2.to_named(ctx)?,
+                t3.to_named(ctx)?,
             )),
         }
     }

@@ -113,5 +113,3 @@ pub fn rc_term_derive(input: TokenStream) -> TokenStream {
     let input = RcTermDeriveInput::from_derive_input(&ast).unwrap();
     input.derive_rc_term().into()
 }
-
-// TODO: Add a derive macro for visitor pattern

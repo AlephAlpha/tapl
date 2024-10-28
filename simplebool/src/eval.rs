@@ -88,11 +88,11 @@ impl DeBruijnTerm {
 
 impl Term {
     pub fn eval1(&self, ctx: &mut Context) -> Result<Rc<Self>> {
-        self.to_de_bruijn(ctx)?.eval1(ctx)?.to_term(ctx)
+        self.to_de_bruijn(ctx)?.eval1(ctx)?.to_named(ctx)
     }
 
     pub fn eval(self: &Rc<Self>, ctx: &mut Context) -> Result<Rc<Self>> {
-        self.to_de_bruijn(ctx)?.eval(ctx).to_term(ctx)
+        self.to_de_bruijn(ctx)?.eval(ctx).to_named(ctx)
     }
 
     pub fn type_of(&self, ctx: &mut Context) -> Result<Rc<Ty>> {

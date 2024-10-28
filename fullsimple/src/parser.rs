@@ -3,8 +3,14 @@ use chumsky::prelude::*;
 use std::rc::Rc;
 
 impl Ty {
+    fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+        util::parser::ident(KEYWORDS.iter().copied())
+    }
+
     fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
         recursive(|ty| {
+            let var = Self::ident().map(Self::var);
+
             let string = text::keyword("String").to(Self::string());
             let bool = text::keyword("Bool").to(Self::bool());
             let unit = text::keyword("Unit").to(Self::unit());
@@ -37,14 +43,14 @@ impl Ty {
 
             let parens = ty.clone().delimited_by(just('('), just(')'));
 
-            let atom = choice((string, bool, unit, float, nat, record, variant, parens));
+            let atom =
+                choice((string, bool, unit, float, nat, record, variant, parens, var)).padded();
 
             let arrow = atom
                 .clone()
-                .padded()
                 .then_ignore(just("->"))
                 .repeated()
-                .then(atom.padded())
+                .then(atom)
                 .foldr(Self::arr);
 
             arrow.padded()
@@ -97,10 +103,14 @@ impl Term {
                 .then(Ty::parser())
                 .map(|((l, t1), t2)| Self::tag(l, t1, t2));
 
+            let inert = text::keyword("inert")
+                .ignore_then(Ty::parser().delimited_by(just('['), just(']')).padded())
+                .map(Self::inert);
+
             let parens = term.clone().delimited_by(just('('), just(')'));
 
             let atom = choice((
-                true_, false_, unit, string, float, int, record, tag, parens, var,
+                true_, false_, unit, string, float, int, record, tag, inert, parens, var,
             ))
             .padded();
 
@@ -123,6 +133,10 @@ impl Term {
 
             let app_ = path.clone().then(path.clone().repeated()).foldl(Self::app);
 
+            let fix = text::keyword("fix")
+                .ignore_then(path.clone())
+                .map(Self::fix);
+
             let times_float = text::keyword("timesfloat")
                 .ignore_then(path.clone())
                 .then(path.clone())
@@ -140,7 +154,7 @@ impl Term {
                 .ignore_then(path.clone())
                 .map(Self::is_zero);
 
-            let app = choice((times_float, succ, pred, is_zero, app_));
+            let app = choice((fix, times_float, succ, pred, is_zero, app_));
 
             let if_ = text::keyword("if")
                 .ignore_then(term.clone())
@@ -199,6 +213,13 @@ impl Binding {
 
         choice((term, var, name)).padded()
     }
+
+    fn ty_parser() -> impl Parser<char, Self, Error = Simple<char>> {
+        let ty_var = empty().to(Self::TyVar);
+        let ty_abb = just('=').ignore_then(Ty::parser()).map(Self::TyAbb);
+
+        choice((ty_abb, ty_var)).padded()
+    }
 }
 
 impl Command {
@@ -221,12 +242,17 @@ impl Command {
             .ignore_then(Term::ident().padded())
             .then(Binding::parser())
             .map(|(x, b)| Self::Bind(x, b));
+        let bind_type = just(':')
+            .then(text::keyword("bindtype"))
+            .ignore_then(Term::ident().padded())
+            .then(Binding::ty_parser())
+            .map(|(x, b)| Self::Bind(x, b));
         let type_ = just(':')
             .then(text::keyword("type"))
             .ignore_then(Term::parser())
             .map(Self::Type);
         let noop = text::whitespace().to(Self::Noop);
 
-        choice((eval1, eval, bind, type_, term, noop)).then_ignore(end())
+        choice((eval1, eval, bind, bind_type, type_, term, noop)).then_ignore(end())
     }
 }

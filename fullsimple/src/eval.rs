@@ -1,31 +1,57 @@
-use crate::syntax::{Binding, Context, DeBruijnTerm, Term, Ty};
+use crate::syntax::{Binding, Context, DeBruijnTerm, DeBruijnTy, Term, Ty};
 use std::rc::Rc;
 use util::error::{Error, Result};
 
-impl Ty {
-    fn eqv(&self, other: &Self, _ctx: &Context) -> bool {
-        match (self, other) {
+impl DeBruijnTy {
+    fn get_ty_abb(ctx: &Context, i: usize) -> Result<Rc<Self>> {
+        match ctx.get_binding_shifting(i) {
+            Ok(Binding::TyAbb(t)) => Ok(t),
+            _ => Err(Error::NoRuleApplies),
+        }
+    }
+
+    fn compute(&self, ctx: &Context) -> Result<Rc<Self>> {
+        match self {
+            Self::Var(i) => Self::get_ty_abb(ctx, *i),
+            _ => Err(Error::NoRuleApplies),
+        }
+    }
+
+    fn simplify(&self, ctx: &Context) -> Rc<Self> {
+        let mut t = Rc::new(self.clone());
+        while let Ok(t_) = t.compute(ctx) {
+            t = t_;
+        }
+        t
+    }
+
+    fn eqv(&self, other: &Self, ctx: &Context) -> bool {
+        let self_ = self.simplify(ctx);
+        let other_ = other.simplify(ctx);
+        match (self_.as_ref(), other_.as_ref()) {
             (Self::Unit, Self::Unit)
             | (Self::Float, Self::Float)
             | (Self::String, Self::String)
             | (Self::Bool, Self::Bool)
             | (Self::Nat, Self::Nat) => true,
+            (Self::Id(b1), Self::Id(b2)) => b1 == b2,
             (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => {
-                ty1.eqv(ty1_, _ctx) && ty2.eqv(ty2_, _ctx)
+                ty1.eqv(ty1_, ctx) && ty2.eqv(ty2_, ctx)
             }
             (Self::Record(fields), Self::Record(fields_)) => {
                 fields.len() == fields_.len()
                     && fields
                         .iter()
-                        .all(|(l, ty)| fields_.iter().any(|(l_, ty_)| l == l_ && ty.eqv(ty_, _ctx)))
+                        .all(|(l, ty)| fields_.iter().any(|(l_, ty_)| l == l_ && ty.eqv(ty_, ctx)))
             }
             (Self::Variant(fields), Self::Variant(fields_)) => {
                 fields.len() == fields_.len()
                     && fields
                         .iter()
                         .zip(fields_)
-                        .all(|((l, ty), (l_, ty_))| l == l_ && ty.eqv(ty_, _ctx))
+                        .all(|((l, ty), (l_, ty_))| l == l_ && ty.eqv(ty_, ctx))
             }
+            (Self::Var(i), Self::Var(j)) => i == j,
             _ => false,
         }
     }
@@ -112,6 +138,11 @@ impl DeBruijnTerm {
                 }
                 _ => Ok(Self::proj(t.eval1(ctx)?, l.clone())),
             },
+            Self::Fix(t) => match t.as_ref() {
+                Self::Abs(_, _, t1) => Ok(t1.subst_top(&Self::fix(t.clone()))),
+                t if t.is_val(ctx) => Err(Error::NoRuleApplies),
+                _ => Ok(Self::fix(t.eval1(ctx)?)),
+            },
             Self::TimesFloat(t1, t2) => match t1.as_ref() {
                 Self::Float(f1) => match t2.as_ref() {
                     Self::Float(f2) => Ok(Self::float(f1 * f2)),
@@ -142,7 +173,7 @@ impl DeBruijnTerm {
         t
     }
 
-    pub fn type_of(&self, ctx: &mut Context) -> Result<Rc<Ty>> {
+    pub fn type_of(&self, ctx: &mut Context) -> Result<Rc<DeBruijnTy>> {
         match self {
             Self::Ascribe(t, ty) => {
                 if t.type_of(ctx)?.eqv(ty, ctx) {
@@ -171,7 +202,7 @@ impl DeBruijnTerm {
                     ))
                 }
             }
-            Self::Case(t, cases) => match t.type_of(ctx)?.as_ref() {
+            Self::Case(t, cases) => match t.type_of(ctx)?.simplify(ctx).as_ref() {
                 Ty::Variant(fields) => {
                     for (l, _) in fields.iter() {
                         if !cases.iter().any(|(l_, _, _)| l_ == l) {
@@ -189,7 +220,9 @@ impl DeBruijnTerm {
                                 .ok_or_else(|| {
                                     Error::TypeError(format!("label {x} not in type"))
                                 })?;
-                            ctx.with_binding(x.clone(), Binding::Var(ty), |ctx| t.type_of(ctx))
+                            ctx.with_binding(x.clone(), Binding::Var(ty), |ctx| {
+                                Ok(t.type_of(ctx)?.shift(-1))
+                            })
                         })
                         .collect::<Result<Vec<_>>>()?;
 
@@ -205,7 +238,7 @@ impl DeBruijnTerm {
                 }
                 _ => Err(Error::TypeError("expected variant type".to_string())),
             },
-            Self::Tag(l, t, ty) => match ty.as_ref() {
+            Self::Tag(l, t, ty) => match ty.simplify(ctx).as_ref() {
                 Ty::Variant(fields) => {
                     if let Some((_, ty_)) = fields.iter().find(|(l_, _)| l_ == l) {
                         if t.type_of(ctx)?.eqv(ty_, ctx) {
@@ -234,9 +267,9 @@ impl DeBruijnTerm {
                     ))
                 }
             }
-            Self::Var(i) => match ctx.get_binding(*i)? {
-                Binding::Var(ty) => Ok(ty.clone()),
-                Binding::TermAbb(_, Some(ty)) => Ok(ty.clone()),
+            Self::Var(i) => match ctx.get_binding_shifting(*i)? {
+                Binding::Var(ty) => Ok(ty),
+                Binding::TermAbb(_, Some(ty)) => Ok(ty),
                 _ => Err(Error::TypeError(format!(
                     "wrong kind of binding for variable {}",
                     ctx.index_to_name(*i).unwrap()
@@ -244,7 +277,9 @@ impl DeBruijnTerm {
             },
             Self::Let(x, t1, t2) => {
                 let ty1 = t1.type_of(ctx)?;
-                ctx.with_binding(x.clone(), Binding::Var(ty1), |ctx| t2.type_of(ctx))
+                ctx.with_binding(x.clone(), Binding::Var(ty1), |ctx| {
+                    Ok(t2.type_of(ctx)?.shift(-1))
+                })
             }
             Self::Record(fields) => {
                 let fields = fields
@@ -253,7 +288,7 @@ impl DeBruijnTerm {
                     .collect::<Result<Vec<_>>>()?;
                 Ok(Ty::record(fields))
             }
-            Self::Proj(t, l) => match t.type_of(ctx)?.as_ref() {
+            Self::Proj(t, l) => match t.type_of(ctx)?.simplify(ctx).as_ref() {
                 Ty::Record(fields) => fields
                     .iter()
                     .find(|(l_, _)| l_ == l)
@@ -264,13 +299,13 @@ impl DeBruijnTerm {
             Self::Abs(x, ty1, t2) => {
                 ctx.with_binding(x.clone(), Binding::Var(ty1.clone()), |ctx| {
                     let ty2 = t2.type_of(ctx)?;
-                    Ok(Ty::arr(ty1.clone(), ty2))
+                    Ok(Ty::arr(ty1.clone(), ty2.shift(-1)))
                 })
             }
             Self::App(t1, t2) => {
                 let ty1 = t1.type_of(ctx)?;
                 let ty2 = t2.type_of(ctx)?;
-                match ty1.as_ref() {
+                match ty1.simplify(ctx).as_ref() {
                     Ty::Arr(ty11, ty12) => {
                         if ty2.eqv(ty11, ctx) {
                             Ok(ty12.clone())
@@ -281,6 +316,18 @@ impl DeBruijnTerm {
                     _ => Err(Error::TypeError("arrow type expected".to_string())),
                 }
             }
+            Self::Fix(t) => match t.type_of(ctx)?.simplify(ctx).as_ref() {
+                Ty::Arr(ty1, ty2) => {
+                    if ty1.eqv(ty2, ctx) {
+                        Ok(ty1.clone())
+                    } else {
+                        Err(Error::TypeError(
+                            "result of body not compatible with domain".to_string(),
+                        ))
+                    }
+                }
+                _ => Err(Error::TypeError("arrow type expected".to_string())),
+            },
             Self::Zero => Ok(Ty::nat()),
             Self::Succ(t) => {
                 if t.type_of(ctx)?.eqv(&Ty::Nat, ctx) {
@@ -309,20 +356,21 @@ impl DeBruijnTerm {
                     ))
                 }
             }
+            Self::Inert(ty) => Ok(ty.clone()),
         }
     }
 }
 
 impl Term {
     pub fn eval1(&self, ctx: &mut Context) -> Result<Rc<Self>> {
-        self.to_de_bruijn(ctx)?.eval1(ctx)?.to_term(ctx)
+        self.to_de_bruijn(ctx)?.eval1(ctx)?.to_named(ctx)
     }
 
     pub fn eval(self: &Rc<Self>, ctx: &mut Context) -> Result<Rc<Self>> {
-        self.to_de_bruijn(ctx)?.eval(ctx).to_term(ctx)
+        self.to_de_bruijn(ctx)?.eval(ctx).to_named(ctx)
     }
 
     pub fn type_of(&self, ctx: &mut Context) -> Result<Rc<Ty>> {
-        self.to_de_bruijn(ctx)?.type_of(ctx)
+        self.to_de_bruijn(ctx)?.type_of(ctx)?.to_named(ctx)
     }
 }

@@ -110,17 +110,17 @@ impl DeBruijnTerm {
 }
 
 impl DeBruijnTerm {
-    pub fn to_term(&self, ctx: &mut Context) -> Result<Rc<Term>> {
+    pub fn to_named(&self, ctx: &mut Context) -> Result<Rc<Term>> {
         match self {
             Self::Var(x) => Ok(Term::var(ctx.index_to_name(*x)?)),
             Self::Abs(x, t) => {
                 let name = ctx.pick_fresh_name(x);
                 Ok(Term::abs(
                     name.clone(),
-                    ctx.with_name(name, |ctx| t.to_term(ctx))?,
+                    ctx.with_name(name, |ctx| t.to_named(ctx))?,
                 ))
             }
-            Self::App(t1, t2) => Ok(Term::app(t1.to_term(ctx)?, t2.to_term(ctx)?)),
+            Self::App(t1, t2) => Ok(Term::app(t1.to_named(ctx)?, t2.to_named(ctx)?)),
         }
     }
 }
