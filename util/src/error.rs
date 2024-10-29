@@ -9,6 +9,8 @@ pub enum Error {
     VariableLookupFailure(usize, usize),
     #[error("No rule applies")]
     NoRuleApplies,
+    #[error("Type of binding does not match declared type")]
+    TypeMismatch,
     #[error("{0}")]
     TypeError(String),
 }

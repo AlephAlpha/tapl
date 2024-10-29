@@ -7,6 +7,10 @@ impl Term {
         util::parser::ident(KEYWORDS.iter().copied())
     }
 
+    fn ident_or_underscore() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+        Self::ident().or(text::keyword("_").to("_".to_string()))
+    }
+
     fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
         recursive(|term| {
             let var = Self::ident().map(Self::var);
@@ -18,7 +22,7 @@ impl Term {
             let app = atom.clone().then(atom.repeated()).foldl(Self::app);
 
             let abs = text::keyword("lambda")
-                .ignore_then(Self::ident().padded())
+                .ignore_then(Self::ident_or_underscore().padded())
                 .then_ignore(just('.'))
                 .then(term.clone())
                 .map(|(x, t)| Self::abs(x, t));

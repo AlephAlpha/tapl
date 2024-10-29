@@ -11,9 +11,11 @@ impl Ty {
         recursive(|ty| {
             let var = Self::ident().map(Self::var);
 
+            let bot = text::keyword("Bot").to(Self::bot());
+            let top = text::keyword("Top").to(Self::top());
             let string = text::keyword("String").to(Self::string());
-            let bool = text::keyword("Bool").to(Self::bool());
             let unit = text::keyword("Unit").to(Self::unit());
+            let bool = text::keyword("Bool").to(Self::bool());
             let float = text::keyword("Float").to(Self::float());
             let nat = text::keyword("Nat").to(Self::nat());
 
@@ -43,17 +45,29 @@ impl Ty {
 
             let parens = ty.clone().delimited_by(just('('), just(')'));
 
-            let atom =
-                choice((string, bool, unit, float, nat, record, variant, parens, var)).padded();
+            let atom = choice((
+                bot, top, string, bool, unit, float, nat, record, variant, parens, var,
+            ))
+            .padded();
 
             let arrow = atom
                 .clone()
                 .then_ignore(just("->"))
                 .repeated()
-                .then(atom)
+                .then(atom.clone())
                 .foldr(Self::arr);
 
-            arrow.padded()
+            let ref_ = text::keyword("Ref")
+                .ignore_then(atom.clone())
+                .map(Self::ref_);
+            let source = text::keyword("Source")
+                .ignore_then(atom.clone())
+                .map(Self::source);
+            let sink = text::keyword("Sink")
+                .ignore_then(atom.clone())
+                .map(Self::sink);
+
+            choice((arrow, ref_, source, sink)).padded()
         })
     }
 }
@@ -71,9 +85,9 @@ impl Term {
         recursive(|term| {
             let var = Self::ident().map(Self::var);
 
+            let unit = text::keyword("unit").to(Self::unit());
             let true_ = text::keyword("true").to(Self::true_());
             let false_ = text::keyword("false").to(Self::false_());
-            let unit = text::keyword("unit").to(Self::unit());
 
             let string = util::parser::string().map(Self::string);
             let float = util::parser::float().map(Self::float);
@@ -111,7 +125,12 @@ impl Term {
                 .ignore_then(Ty::parser().delimited_by(just('['), just(']')).padded())
                 .map(Self::inert);
 
-            let parens = term.clone().delimited_by(just('('), just(')'));
+            let seq = term
+                .clone()
+                .then(just(';').ignore_then(term.clone()).repeated())
+                .foldl(|t1, t2| Self::app(Self::abs("_", Ty::unit(), t2), t1));
+
+            let parens = seq.delimited_by(just('('), just(')'));
 
             let atom = choice((
                 true_, false_, unit, string, float, int, record, tag, inert, parens, var,
@@ -137,6 +156,12 @@ impl Term {
 
             let app_ = path.clone().then(path.clone().repeated()).foldl(Self::app);
 
+            let ref_ = text::keyword("ref")
+                .ignore_then(path.clone())
+                .map(Self::ref_);
+
+            let deref = just('!').ignore_then(path.clone()).map(Self::deref);
+
             let fix = text::keyword("fix")
                 .ignore_then(path.clone())
                 .map(Self::fix);
@@ -158,15 +183,13 @@ impl Term {
                 .ignore_then(path.clone())
                 .map(Self::is_zero);
 
-            let app = choice((fix, times_float, succ, pred, is_zero, app_));
+            let app = choice((ref_, deref, fix, times_float, succ, pred, is_zero, app_)).padded();
 
-            let if_ = text::keyword("if")
-                .ignore_then(term.clone())
-                .then_ignore(text::keyword("then"))
-                .then(term.clone())
-                .then_ignore(text::keyword("else"))
-                .then(term.clone())
-                .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
+            let assign = app
+                .clone()
+                .then_ignore(just(":="))
+                .then(app.clone())
+                .map(|(t1, t2)| Self::assign(t1, t2));
 
             let abs = text::keyword("lambda")
                 .ignore_then(Self::ident_or_underscore().padded())
@@ -175,6 +198,14 @@ impl Term {
                 .then_ignore(just('.'))
                 .then(term.clone())
                 .map(|((x, ty), t)| Self::abs(x, ty, t));
+
+            let if_ = text::keyword("if")
+                .ignore_then(term.clone())
+                .then_ignore(text::keyword("then"))
+                .then(term.clone())
+                .then_ignore(text::keyword("else"))
+                .then(term.clone())
+                .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
             let let_ = text::keyword("let")
                 .ignore_then(Self::ident_or_underscore().padded())
@@ -214,7 +245,7 @@ impl Term {
                 .then(cases)
                 .map(|(t, cases)| Self::case(t, cases));
 
-            choice((if_, abs, let_, let_rec, case, app)).padded()
+            choice((if_, abs, let_, let_rec, case, assign, app)).padded()
         })
     }
 }

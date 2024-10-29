@@ -17,6 +17,7 @@ pub const KEYWORDS: &[&str] = &[
     "pred",
     "iszero",
     "timesfloat",
+    "_",
 ];
 pub const COMMANDS: &[&str] = &["eval", "eval1", "bind"];
 

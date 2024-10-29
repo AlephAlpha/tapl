@@ -5,45 +5,57 @@ use std::{
 use util::{error::Result, BindingShift, RcTerm};
 
 pub const KEYWORDS: &[&str] = &[
+    "unit",
+    "loc",
+    "as",
     "true",
     "false",
+    "inert",
+    "ref",
+    "succ",
+    "pred",
+    "iszero",
+    "timesfloat",
     "if",
     "then",
     "else",
-    "unit",
-    "timesfloat",
-    "as",
     "case",
     "of",
     "let",
     "in",
     "lambda",
     "fix",
-    "inert",
-    "succ",
-    "pred",
-    "iszero",
     "letrec",
     "_",
-    "Unit",
-    "Float",
+    "Bot",
+    "Top",
     "String",
+    "Unit",
     "Bool",
+    "Float",
     "Nat",
+    "Ref",
+    "Source",
+    "Sink",
 ];
 pub const COMMANDS: &[&str] = &["eval", "eval1", "bind", "bindtype", "type"];
 
 #[derive(Clone, Debug, PartialEq, RcTerm)]
 pub enum Ty<V = String> {
+    Bot,
+    Top,
     Id(#[rc_term(into)] String),
     Var(#[rc_term(into)] V),
-    Unit,
-    Float,
+    Arr(Rc<Self>, Rc<Self>),
     Record(#[rc_term(into)] Vec<(String, Rc<Self>)>),
     Variant(#[rc_term(into)] Vec<(String, Rc<Self>)>),
+    Ref(Rc<Self>),
     String,
+    Unit,
     Bool,
-    Arr(Rc<Self>, Rc<Self>),
+    Source(Rc<Self>),
+    Sink(Rc<Self>),
+    Float,
     Nat,
 }
 
@@ -51,23 +63,27 @@ pub type DeBruijnTy = Ty<usize>;
 
 #[derive(Clone, Debug, PartialEq, RcTerm)]
 pub enum Term<V = String> {
-    Ascribe(Rc<Self>, Rc<Ty<V>>),
-    String(#[rc_term(into)] String),
-    True,
-    False,
-    If(Rc<Self>, Rc<Self>, Rc<Self>),
-    Case(Rc<Self>, #[rc_term(into)] Vec<(String, String, Rc<Self>)>),
-    Tag(#[rc_term(into)] String, Rc<Self>, Rc<Ty<V>>),
-    Unit,
-    Float(f64),
-    TimesFloat(Rc<Self>, Rc<Self>),
-    Let(#[rc_term(into)] String, Rc<Self>, Rc<Self>),
-    Record(#[rc_term(into)] Vec<(String, Rc<Self>)>),
-    Proj(Rc<Self>, #[rc_term(into)] String),
     Var(#[rc_term(into)] V),
     Abs(#[rc_term(into)] String, Rc<Ty<V>>, Rc<Self>),
     App(Rc<Self>, Rc<Self>),
+    Ascribe(Rc<Self>, Rc<Ty<V>>),
+    String(#[rc_term(into)] String),
+    Unit,
+    Loc(usize),
+    Ref(Rc<Self>),
+    Deref(Rc<Self>),
+    Assign(Rc<Self>, Rc<Self>),
+    Case(Rc<Self>, #[rc_term(into)] Vec<(String, String, Rc<Self>)>),
+    Tag(#[rc_term(into)] String, Rc<Self>, Rc<Ty<V>>),
+    Let(#[rc_term(into)] String, Rc<Self>, Rc<Self>),
     Fix(Rc<Self>),
+    True,
+    False,
+    If(Rc<Self>, Rc<Self>, Rc<Self>),
+    Float(f64),
+    TimesFloat(Rc<Self>, Rc<Self>),
+    Record(#[rc_term(into)] Vec<(String, Rc<Self>)>),
+    Proj(Rc<Self>, #[rc_term(into)] String),
     Zero,
     Succ(Rc<Self>),
     Pred(Rc<Self>),
@@ -112,25 +128,10 @@ impl<V> Term<V> {
 impl<V: Display> Ty<V> {
     fn fmt_atom(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Bot => write!(f, "Bot"),
+            Self::Top => write!(f, "Top"),
             Self::String => write!(f, "String"),
-            Self::Bool => write!(f, "Bool"),
             Self::Unit => write!(f, "Unit"),
-            Self::Id(b) => write!(f, "{b}"),
-            Self::Float => write!(f, "Float"),
-            Self::Record(fields) => {
-                write!(f, "{{")?;
-                for (i, (l, ty)) in fields.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    if l == &i.to_string() {
-                        write!(f, "{ty}")?;
-                    } else {
-                        write!(f, "{l}: {ty}")?;
-                    }
-                }
-                write!(f, "}}")
-            }
             Self::Variant(fields) => {
                 write!(f, "<")?;
                 for (i, (l, ty)) in fields.iter().enumerate() {
@@ -145,6 +146,23 @@ impl<V: Display> Ty<V> {
                 }
                 write!(f, ">")
             }
+            Self::Bool => write!(f, "Bool"),
+            Self::Id(b) => write!(f, "{b}"),
+            Self::Record(fields) => {
+                write!(f, "{{")?;
+                for (i, (l, ty)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    if l == &i.to_string() {
+                        write!(f, "{ty}")?;
+                    } else {
+                        write!(f, "{l}: {ty}")?;
+                    }
+                }
+                write!(f, "}}")
+            }
+            Self::Float => write!(f, "Float"),
             Self::Var(x) => write!(f, "{x}"),
             Self::Nat => write!(f, "Nat"),
             t => write!(f, "({t})"),
@@ -165,25 +183,32 @@ impl<V: Display> Ty<V> {
 
 impl<V: Display> Display for Ty<V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.fmt_arrow(f)
+        match self {
+            Self::Ref(t) => {
+                write!(f, "Ref ")?;
+                t.fmt(f)
+            }
+            Self::Source(t) => {
+                write!(f, "Source ")?;
+                t.fmt(f)
+            }
+            Self::Sink(t) => {
+                write!(f, "Sink ")?;
+                t.fmt(f)
+            }
+            t => t.fmt_arrow(f),
+        }
     }
 }
 
 impl<V: Display> Term<V> {
     fn fmt_atom(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Var(x) => write!(f, "{x}"),
             Self::String(s) => write!(f, "{s:?}"),
-            Self::True => write!(f, "true"),
-            Self::False => write!(f, "false"),
-            Self::Tag(l, t, ty) => {
-                write!(f, "<{l}={t}> as {ty}")
-            }
             Self::Unit => write!(f, "unit"),
-            Self::Float(x) => write!(f, "{x}"),
-            Self::Zero => write!(f, "0"),
-            Self::Succ(t) if t.is_int() => {
-                write!(f, "{}", t.to_int().unwrap() + 1)
-            }
+            Self::Loc(l) => write!(f, "<loc #{l}>"),
+            Self::Tag(l, t, ty) => write!(f, "<{l}={t}> as {ty}"),
             Self::Record(fields) => {
                 write!(f, "{{")?;
                 for (i, (l, term)) in fields.iter().enumerate() {
@@ -198,8 +223,14 @@ impl<V: Display> Term<V> {
                 }
                 write!(f, "}}")
             }
+            Self::True => write!(f, "true"),
+            Self::False => write!(f, "false"),
+            Self::Float(x) => write!(f, "{x}"),
+            Self::Zero => write!(f, "0"),
+            Self::Succ(t) if t.is_int() => {
+                write!(f, "{}", t.to_int().unwrap() + 1)
+            }
             Self::Inert(ty) => write!(f, "inert[{ty}]"),
-            Self::Var(x) => write!(f, "{x}"),
             t => write!(f, "({t})"),
         }
     }
@@ -231,9 +262,23 @@ impl<V: Display> Term<V> {
                 write!(f, " ")?;
                 t2.fmt_atom(f)
             }
+            Self::Ref(t) => {
+                write!(f, "ref ")?;
+                t.fmt_atom(f)
+            }
+            Self::Deref(t) => {
+                write!(f, "!")?;
+                t.fmt_atom(f)
+            }
             Self::Succ(t) if !t.is_int() => {
                 write!(f, "succ ")?;
                 t.fmt_atom(f)
+            }
+            Self::TimesFloat(t1, t2) => {
+                write!(f, "timesfloat ")?;
+                t1.fmt_atom(f)?;
+                write!(f, " ")?;
+                t2.fmt_atom(f)
             }
             Self::Pred(t) => {
                 write!(f, "pred ")?;
@@ -243,12 +288,6 @@ impl<V: Display> Term<V> {
                 write!(f, "iszero ")?;
                 t.fmt_atom(f)
             }
-            Self::TimesFloat(t1, t2) => {
-                write!(f, "timesfloat ")?;
-                t1.fmt_atom(f)?;
-                write!(f, " ")?;
-                t2.fmt_atom(f)
-            }
             _ => self.fmt_path(f),
         }
     }
@@ -257,9 +296,8 @@ impl<V: Display> Term<V> {
 impl<V: Display> Display for Term<V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::If(t1, t2, t3) => {
-                write!(f, "if {t1} then {t2} else {t3}")
-            }
+            Self::Abs(x, ty, t) => write!(f, "lambda {x}: {ty}. {t}"),
+            Self::Assign(t1, t2) => write!(f, "{t1} := {t2}"),
             Self::Case(t, cases) => {
                 write!(f, "case {t} of ")?;
                 for (i, (l, x, t)) in cases.iter().enumerate() {
@@ -270,13 +308,11 @@ impl<V: Display> Display for Term<V> {
                 }
                 Ok(())
             }
-            Self::Let(x, t1, t2) => {
-                write!(f, "let {x} = {t1} in {t2}")
-            }
-            Self::Abs(x, ty, t) => {
-                write!(f, "lambda {x}: {ty}. {t}")
-            }
+            Self::Let(x, t1, t2) => write!(f, "let {x} = {t1} in {t2}"),
             Self::Fix(t) => write!(f, "fix {t}"),
+            Self::If(t1, t2, t3) => {
+                write!(f, "if {t1} then {t2} else {t3}")
+            }
             _ => self.fmt_app(f),
         }
     }
@@ -311,28 +347,33 @@ impl DeBruijnTy {
         on_var: &mut impl FnMut(usize, usize) -> Rc<Self>,
     ) -> Rc<Self> {
         match self {
-            Self::Id(s) => Self::id(s.clone()),
-            Self::Var(x) => on_var(cutoff, *x),
-            Self::Unit => Self::unit(),
-            Self::Float => Self::float(),
-            Self::Record(fields) => Self::record(
-                fields
-                    .iter()
-                    .map(|(label, ty)| (label.clone(), ty.map_vars_walk(cutoff, on_var)))
-                    .collect::<Vec<_>>(),
+            Self::Bot => Self::bot(),
+            Self::Arr(ty1, ty2) => Self::arr(
+                ty1.map_vars_walk(cutoff, on_var),
+                ty2.map_vars_walk(cutoff, on_var),
             ),
+            Self::Top => Self::top(),
+            Self::String => Self::string(),
             Self::Variant(fields) => Self::variant(
                 fields
                     .iter()
                     .map(|(label, ty)| (label.clone(), ty.map_vars_walk(cutoff, on_var)))
                     .collect::<Vec<_>>(),
             ),
-            Self::String => Self::string(),
-            Self::Bool => Self::bool(),
-            Self::Arr(t1, t2) => Self::arr(
-                t1.map_vars_walk(cutoff, on_var),
-                t2.map_vars_walk(cutoff, on_var),
+            Self::Id(s) => Self::id(s.clone()),
+            Self::Record(fields) => Self::record(
+                fields
+                    .iter()
+                    .map(|(label, ty)| (label.clone(), ty.map_vars_walk(cutoff, on_var)))
+                    .collect::<Vec<_>>(),
             ),
+            Self::Bool => Self::bool(),
+            Self::Float => Self::float(),
+            Self::Unit => Self::unit(),
+            Self::Ref(ty) => Self::ref_(ty.map_vars_walk(cutoff, on_var)),
+            Self::Source(ty) => Self::source(ty.map_vars_walk(cutoff, on_var)),
+            Self::Sink(ty) => Self::sink(ty.map_vars_walk(cutoff, on_var)),
+            Self::Var(x) => on_var(cutoff, *x),
             Self::Nat => Self::nat(),
         }
     }
@@ -366,17 +407,33 @@ impl DeBruijnTerm {
         on_type: &mut impl FnMut(usize, &Rc<DeBruijnTy>) -> Rc<DeBruijnTy>,
     ) -> Rc<Self> {
         match self {
+            Self::Var(x) => on_var(cutoff, *x),
+            Self::Abs(x, ty, t) => Self::abs(
+                x.clone(),
+                ty.clone(),
+                t.map_vars_walk(cutoff + 1, on_var, on_type),
+            ),
+            Self::App(t1, t2) => Self::app(
+                t1.map_vars_walk(cutoff, on_var, on_type),
+                t2.map_vars_walk(cutoff, on_var, on_type),
+            ),
             Self::Ascribe(t, ty) => Self::ascribe(
                 t.map_vars_walk(cutoff, on_var, on_type),
                 on_type(cutoff, ty),
             ),
             Self::String(s) => Self::string(s.clone()),
-            Self::True => Self::true_(),
-            Self::False => Self::false_(),
-            Self::If(t1, t2, t3) => Self::if_(
+            Self::Unit => Self::unit(),
+            Self::Loc(l) => Self::loc(*l),
+            Self::Ref(t) => Self::ref_(t.map_vars_walk(cutoff, on_var, on_type)),
+            Self::Deref(t) => Self::deref(t.map_vars_walk(cutoff, on_var, on_type)),
+            Self::Assign(t1, t2) => Self::assign(
                 t1.map_vars_walk(cutoff, on_var, on_type),
                 t2.map_vars_walk(cutoff, on_var, on_type),
-                t3.map_vars_walk(cutoff, on_var, on_type),
+            ),
+            Self::Tag(l, t, ty) => Self::tag(
+                l.clone(),
+                t.map_vars_walk(cutoff, on_var, on_type),
+                on_type(cutoff, ty),
             ),
             Self::Case(t, cases) => Self::case(
                 t.map_vars_walk(cutoff, on_var, on_type),
@@ -391,22 +448,25 @@ impl DeBruijnTerm {
                     })
                     .collect::<Vec<_>>(),
             ),
-            Self::Tag(l, t, ty) => Self::tag(
-                l.clone(),
-                t.map_vars_walk(cutoff, on_var, on_type),
-                on_type(cutoff, ty),
-            ),
-            Self::Unit => Self::unit(),
-            Self::Float(x) => Self::float(*x),
-            Self::TimesFloat(t1, t2) => Self::times_float(
-                t1.map_vars_walk(cutoff, on_var, on_type),
-                t2.map_vars_walk(cutoff, on_var, on_type),
-            ),
             Self::Let(x, t1, t2) => Self::let_(
                 x.clone(),
                 t1.map_vars_walk(cutoff, on_var, on_type),
                 t2.map_vars_walk(cutoff + 1, on_var, on_type),
             ),
+            Self::Fix(t) => Self::fix(t.map_vars_walk(cutoff, on_var, on_type)),
+            Self::Float(x) => Self::float(*x),
+            Self::TimesFloat(t1, t2) => Self::times_float(
+                t1.map_vars_walk(cutoff, on_var, on_type),
+                t2.map_vars_walk(cutoff, on_var, on_type),
+            ),
+            Self::True => Self::true_(),
+            Self::False => Self::false_(),
+            Self::If(t1, t2, t3) => Self::if_(
+                t1.map_vars_walk(cutoff, on_var, on_type),
+                t2.map_vars_walk(cutoff, on_var, on_type),
+                t3.map_vars_walk(cutoff, on_var, on_type),
+            ),
+            Self::Proj(t, l) => Self::proj(t.map_vars_walk(cutoff, on_var, on_type), l.clone()),
             Self::Record(fields) => Self::record(
                 fields
                     .iter()
@@ -415,18 +475,6 @@ impl DeBruijnTerm {
                     })
                     .collect::<Vec<_>>(),
             ),
-            Self::Proj(t, l) => Self::proj(t.map_vars_walk(cutoff, on_var, on_type), l.clone()),
-            Self::Var(x) => on_var(cutoff, *x),
-            Self::Abs(x, ty, t) => Self::abs(
-                x.clone(),
-                ty.clone(),
-                t.map_vars_walk(cutoff + 1, on_var, on_type),
-            ),
-            Self::App(t1, t2) => Self::app(
-                t1.map_vars_walk(cutoff, on_var, on_type),
-                t2.map_vars_walk(cutoff, on_var, on_type),
-            ),
-            Self::Fix(t) => Self::fix(t.map_vars_walk(cutoff, on_var, on_type)),
             Self::Zero => Self::zero(),
             Self::Succ(t) => Self::succ(t.map_vars_walk(cutoff, on_var, on_type)),
             Self::Pred(t) => Self::pred(t.map_vars_walk(cutoff, on_var, on_type)),
@@ -495,10 +543,11 @@ impl BindingShift for DeBruijnBinding {
 impl DeBruijnTy {
     pub fn to_named(&self, ctx: &mut Context) -> Result<Rc<Ty>> {
         match self {
+            Self::Bot => Ok(Ty::bot()),
+            Self::Top => Ok(Ty::top()),
             Self::Id(s) => Ok(Ty::id(s.clone())),
             Self::Var(x) => Ok(Ty::var(ctx.index_to_name(*x)?)),
-            Self::Unit => Ok(Ty::unit()),
-            Self::Float => Ok(Ty::float()),
+            Self::Arr(ty1, ty2) => Ok(Ty::arr(ty1.to_named(ctx)?, ty2.to_named(ctx)?)),
             Self::Record(fields) => Ok(Ty::record(
                 fields
                     .iter()
@@ -511,9 +560,13 @@ impl DeBruijnTy {
                     .map(|(label, ty)| Ok((label.clone(), ty.to_named(ctx)?)))
                     .collect::<Result<Vec<_>>>()?,
             )),
+            Self::Ref(ty) => Ok(Ty::ref_(ty.to_named(ctx)?)),
             Self::String => Ok(Ty::string()),
+            Self::Unit => Ok(Ty::unit()),
             Self::Bool => Ok(Ty::bool()),
-            Self::Arr(t1, t2) => Ok(Ty::arr(t1.to_named(ctx)?, t2.to_named(ctx)?)),
+            Self::Source(ty) => Ok(Ty::source(ty.to_named(ctx)?)),
+            Self::Sink(ty) => Ok(Ty::sink(ty.to_named(ctx)?)),
+            Self::Float => Ok(Ty::float()),
             Self::Nat => Ok(Ty::nat()),
         }
     }
@@ -522,12 +575,16 @@ impl DeBruijnTy {
 impl Ty {
     pub fn to_de_bruijn(&self, ctx: &mut Context) -> Result<Rc<DeBruijnTy>> {
         match self {
+            Self::Bot => Ok(DeBruijnTy::bot()),
+            Self::Top => Ok(DeBruijnTy::top()),
             Self::Id(s) => Ok(DeBruijnTy::id(s.clone())),
             Self::Var(x) => Ok(ctx
                 .name_to_index(x)
                 .map_or_else(|_| DeBruijnTy::id(x.clone()), DeBruijnTy::var)),
-            Self::Unit => Ok(DeBruijnTy::unit()),
-            Self::Float => Ok(DeBruijnTy::float()),
+            Self::Arr(ty1, ty2) => Ok(DeBruijnTy::arr(
+                ty1.to_de_bruijn(ctx)?,
+                ty2.to_de_bruijn(ctx)?,
+            )),
             Self::Record(fields) => Ok(DeBruijnTy::record(
                 fields
                     .iter()
@@ -540,12 +597,13 @@ impl Ty {
                     .map(|(label, ty)| Ok((label.clone(), ty.to_de_bruijn(ctx)?)))
                     .collect::<Result<Vec<_>>>()?,
             )),
+            Self::Ref(ty) => Ok(DeBruijnTy::ref_(ty.to_de_bruijn(ctx)?)),
             Self::String => Ok(DeBruijnTy::string()),
+            Self::Unit => Ok(DeBruijnTy::unit()),
             Self::Bool => Ok(DeBruijnTy::bool()),
-            Self::Arr(t1, t2) => Ok(DeBruijnTy::arr(
-                t1.to_de_bruijn(ctx)?,
-                t2.to_de_bruijn(ctx)?,
-            )),
+            Self::Source(ty) => Ok(DeBruijnTy::source(ty.to_de_bruijn(ctx)?)),
+            Self::Sink(ty) => Ok(DeBruijnTy::sink(ty.to_de_bruijn(ctx)?)),
+            Self::Float => Ok(DeBruijnTy::float()),
             Self::Nat => Ok(DeBruijnTy::nat()),
         }
     }
@@ -554,15 +612,23 @@ impl Ty {
 impl DeBruijnTerm {
     pub fn to_named(&self, ctx: &mut Context) -> Result<Rc<Term>> {
         match self {
+            Self::Var(x) => Ok(Term::var(ctx.index_to_name(*x)?)),
+            Self::Abs(x, ty, t) => {
+                let name = ctx.pick_fresh_name(x);
+                Ok(Term::abs(
+                    name.clone(),
+                    ty.to_named(ctx)?,
+                    ctx.with_name(name, |ctx| t.to_named(ctx))?,
+                ))
+            }
+            Self::App(t1, t2) => Ok(Term::app(t1.to_named(ctx)?, t2.to_named(ctx)?)),
             Self::Ascribe(t, ty) => Ok(Term::ascribe(t.to_named(ctx)?, ty.to_named(ctx)?)),
             Self::String(s) => Ok(Term::string(s.clone())),
-            Self::True => Ok(Term::true_()),
-            Self::False => Ok(Term::false_()),
-            Self::If(t1, t2, t3) => Ok(Term::if_(
-                t1.to_named(ctx)?,
-                t2.to_named(ctx)?,
-                t3.to_named(ctx)?,
-            )),
+            Self::Unit => Ok(Term::unit()),
+            Self::Loc(l) => Ok(Term::loc(*l)),
+            Self::Ref(t) => Ok(Term::ref_(t.to_named(ctx)?)),
+            Self::Deref(t) => Ok(Term::deref(t.to_named(ctx)?)),
+            Self::Assign(t1, t2) => Ok(Term::assign(t1.to_named(ctx)?, t2.to_named(ctx)?)),
             Self::Case(t, cases) => Ok(Term::case(
                 t.to_named(ctx)?,
                 cases
@@ -578,14 +644,21 @@ impl DeBruijnTerm {
                     .collect::<Result<Vec<_>>>()?,
             )),
             Self::Tag(l, t, ty) => Ok(Term::tag(l.clone(), t.to_named(ctx)?, ty.to_named(ctx)?)),
-            Self::Unit => Ok(Term::unit()),
-            Self::Float(x) => Ok(Term::float(*x)),
-            Self::TimesFloat(t1, t2) => Ok(Term::times_float(t1.to_named(ctx)?, t2.to_named(ctx)?)),
             Self::Let(x, t1, t2) => Ok(Term::let_(
                 x.clone(),
                 t1.to_named(ctx)?,
                 ctx.with_name(x.clone(), |ctx| t2.to_named(ctx))?,
             )),
+            Self::Fix(t) => Ok(Term::fix(t.to_named(ctx)?)),
+            Self::True => Ok(Term::true_()),
+            Self::False => Ok(Term::false_()),
+            Self::If(t1, t2, t3) => Ok(Term::if_(
+                t1.to_named(ctx)?,
+                t2.to_named(ctx)?,
+                t3.to_named(ctx)?,
+            )),
+            Self::Float(x) => Ok(Term::float(*x)),
+            Self::TimesFloat(t1, t2) => Ok(Term::times_float(t1.to_named(ctx)?, t2.to_named(ctx)?)),
             Self::Record(fields) => Ok(Term::record(
                 fields
                     .iter()
@@ -593,17 +666,6 @@ impl DeBruijnTerm {
                     .collect::<Result<Vec<_>>>()?,
             )),
             Self::Proj(t, l) => Ok(Term::proj(t.to_named(ctx)?, l.clone())),
-            Self::Var(x) => Ok(Term::var(ctx.index_to_name(*x)?)),
-            Self::Abs(x, ty, t) => {
-                let name = ctx.pick_fresh_name(x);
-                Ok(Term::abs(
-                    name.clone(),
-                    ty.to_named(ctx)?,
-                    ctx.with_name(name, |ctx| t.to_named(ctx))?,
-                ))
-            }
-            Self::App(t1, t2) => Ok(Term::app(t1.to_named(ctx)?, t2.to_named(ctx)?)),
-            Self::Fix(t) => Ok(Term::fix(t.to_named(ctx)?)),
             Self::Zero => Ok(Term::zero()),
             Self::Succ(t) => Ok(Term::succ(t.to_named(ctx)?)),
             Self::Pred(t) => Ok(Term::pred(t.to_named(ctx)?)),
@@ -616,17 +678,28 @@ impl DeBruijnTerm {
 impl Term {
     pub fn to_de_bruijn(&self, ctx: &mut Context) -> Result<Rc<DeBruijnTerm>> {
         match self {
+            Self::Var(x) => Ok(DeBruijnTerm::var(ctx.name_to_index(x)?)),
+            Self::Abs(x, ty, t) => Ok(DeBruijnTerm::abs(
+                x.clone(),
+                ty.to_de_bruijn(ctx)?,
+                ctx.with_name(x.clone(), |ctx| t.to_de_bruijn(ctx))?,
+            )),
+            Self::App(t1, t2) => Ok(DeBruijnTerm::app(
+                t1.to_de_bruijn(ctx)?,
+                t2.to_de_bruijn(ctx)?,
+            )),
             Self::Ascribe(t, ty) => Ok(DeBruijnTerm::ascribe(
                 t.to_de_bruijn(ctx)?,
                 ty.to_de_bruijn(ctx)?,
             )),
             Self::String(s) => Ok(DeBruijnTerm::string(s.clone())),
-            Self::True => Ok(DeBruijnTerm::true_()),
-            Self::False => Ok(DeBruijnTerm::false_()),
-            Self::If(t1, t2, t3) => Ok(DeBruijnTerm::if_(
+            Self::Unit => Ok(DeBruijnTerm::unit()),
+            Self::Loc(l) => Ok(DeBruijnTerm::loc(*l)),
+            Self::Ref(t) => Ok(DeBruijnTerm::ref_(t.to_de_bruijn(ctx)?)),
+            Self::Deref(t) => Ok(DeBruijnTerm::deref(t.to_de_bruijn(ctx)?)),
+            Self::Assign(t1, t2) => Ok(DeBruijnTerm::assign(
                 t1.to_de_bruijn(ctx)?,
                 t2.to_de_bruijn(ctx)?,
-                t3.to_de_bruijn(ctx)?,
             )),
             Self::Case(t, cases) => Ok(DeBruijnTerm::case(
                 t.to_de_bruijn(ctx)?,
@@ -646,16 +719,23 @@ impl Term {
                 t.to_de_bruijn(ctx)?,
                 ty.to_de_bruijn(ctx)?,
             )),
-            Self::Unit => Ok(DeBruijnTerm::unit()),
-            Self::Float(x) => Ok(DeBruijnTerm::float(*x)),
-            Self::TimesFloat(t1, t2) => Ok(DeBruijnTerm::times_float(
-                t1.to_de_bruijn(ctx)?,
-                t2.to_de_bruijn(ctx)?,
-            )),
             Self::Let(x, t1, t2) => Ok(DeBruijnTerm::let_(
                 x.clone(),
                 t1.to_de_bruijn(ctx)?,
                 ctx.with_name(x.clone(), |ctx| t2.to_de_bruijn(ctx))?,
+            )),
+            Self::Fix(t) => Ok(DeBruijnTerm::fix(t.to_de_bruijn(ctx)?)),
+            Self::True => Ok(DeBruijnTerm::true_()),
+            Self::False => Ok(DeBruijnTerm::false_()),
+            Self::If(t1, t2, t3) => Ok(DeBruijnTerm::if_(
+                t1.to_de_bruijn(ctx)?,
+                t2.to_de_bruijn(ctx)?,
+                t3.to_de_bruijn(ctx)?,
+            )),
+            Self::Float(x) => Ok(DeBruijnTerm::float(*x)),
+            Self::TimesFloat(t1, t2) => Ok(DeBruijnTerm::times_float(
+                t1.to_de_bruijn(ctx)?,
+                t2.to_de_bruijn(ctx)?,
             )),
             Self::Record(fields) => Ok(DeBruijnTerm::record(
                 fields
@@ -664,17 +744,6 @@ impl Term {
                     .collect::<Result<Vec<_>>>()?,
             )),
             Self::Proj(t, l) => Ok(DeBruijnTerm::proj(t.to_de_bruijn(ctx)?, l.clone())),
-            Self::Var(x) => Ok(DeBruijnTerm::var(ctx.name_to_index(x)?)),
-            Self::Abs(x, ty, t) => Ok(DeBruijnTerm::abs(
-                x.clone(),
-                ty.to_de_bruijn(ctx)?,
-                ctx.with_name(x.clone(), |ctx| t.to_de_bruijn(ctx))?,
-            )),
-            Self::App(t1, t2) => Ok(DeBruijnTerm::app(
-                t1.to_de_bruijn(ctx)?,
-                t2.to_de_bruijn(ctx)?,
-            )),
-            Self::Fix(t) => Ok(DeBruijnTerm::fix(t.to_de_bruijn(ctx)?)),
             Self::Zero => Ok(DeBruijnTerm::zero()),
             Self::Succ(t) => Ok(DeBruijnTerm::succ(t.to_de_bruijn(ctx)?)),
             Self::Pred(t) => Ok(DeBruijnTerm::pred(t.to_de_bruijn(ctx)?)),
@@ -689,10 +758,13 @@ impl Binding {
         match self {
             Self::Name => Ok(DeBruijnBinding::Name),
             Self::Var(ty) => Ok(DeBruijnBinding::Var(ty.to_de_bruijn(ctx)?)),
-            Self::TermAbb(t, ty) => Ok(DeBruijnBinding::TermAbb(
-                t.to_de_bruijn(ctx)?,
-                ty.as_ref().map(|ty| ty.to_de_bruijn(ctx)).transpose()?,
-            )),
+            Self::TermAbb(t, ty) => {
+                let ty_ = ty.clone().map_or_else(|| t.type_of(ctx), Ok)?;
+                Ok(DeBruijnBinding::TermAbb(
+                    t.to_de_bruijn(ctx)?,
+                    Some(ty_.to_de_bruijn(ctx)?),
+                ))
+            }
             Self::TyVar => Ok(DeBruijnBinding::TyVar),
             Self::TyAbb(ty) => Ok(DeBruijnBinding::TyAbb(ty.to_de_bruijn(ctx)?)),
         }

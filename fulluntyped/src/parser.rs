@@ -7,6 +7,10 @@ impl Term {
         util::parser::ident(KEYWORDS.iter().copied())
     }
 
+    fn ident_or_underscore() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+        Self::ident().or(text::keyword("_").to("_".to_string()))
+    }
+
     fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
         recursive(|term| {
             let var = Self::ident().map(Self::var);
@@ -81,13 +85,13 @@ impl Term {
                 .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
             let abs = text::keyword("lambda")
-                .ignore_then(Self::ident().padded())
+                .ignore_then(Self::ident_or_underscore().padded())
                 .then_ignore(just('.'))
                 .then(term.clone())
                 .map(|(x, t)| Self::abs(x, t));
 
             let let_ = text::keyword("let")
-                .ignore_then(Self::ident().padded())
+                .ignore_then(Self::ident_or_underscore().padded())
                 .then_ignore(just('='))
                 .then(term.clone())
                 .then_ignore(text::keyword("in"))

@@ -1,18 +1,14 @@
-use crate::syntax::{Binding, Context, DeBruijnTerm, DeBruijnTy, Term, Ty};
+use crate::syntax::{Binding, Context, DeBruijnBinding, DeBruijnTerm, DeBruijnTy, Term, Ty};
 use std::rc::Rc;
 use util::error::{Error, Result};
 
 impl DeBruijnTy {
-    fn get_ty_abb(ctx: &Context, i: usize) -> Result<Rc<Self>> {
-        match ctx.get_binding_shifting(i) {
-            Ok(Binding::TyAbb(t)) => Ok(t),
-            _ => Err(Error::NoRuleApplies),
-        }
-    }
-
     fn compute(&self, ctx: &Context) -> Result<Rc<Self>> {
         match self {
-            Self::Var(i) => Self::get_ty_abb(ctx, *i),
+            Self::Var(i) => match ctx.get_binding_shifting(*i) {
+                Ok(Binding::TyAbb(t)) => Ok(t),
+                _ => Err(Error::NoRuleApplies),
+            },
             _ => Err(Error::NoRuleApplies),
         }
     }
@@ -64,9 +60,12 @@ impl DeBruijnTerm {
 
     fn is_val(&self, _ctx: &Context) -> bool {
         match self {
-            Self::String(_) | Self::Float(_) | Self::True | Self::False | Self::Abs(_, _, _) => {
-                true
-            }
+            Self::String(_)
+            | Self::Float(_)
+            | Self::True
+            | Self::False
+            | Self::Abs(_, _, _)
+            | Self::Unit => true,
             Self::Record(fields) => fields.iter().all(|(_, t)| t.is_val(_ctx)),
             Self::Tag(_, t, _) => t.is_val(_ctx),
             t => t.is_numeric_val(),
@@ -293,7 +292,7 @@ impl DeBruijnTerm {
                     .iter()
                     .find(|(l_, _)| l_ == l)
                     .map(|(_, ty)| ty.clone())
-                    .ok_or_else(|| Error::TypeError("label not found".to_string())),
+                    .ok_or_else(|| Error::TypeError(format!("label {l} not found"))),
                 _ => Err(Error::TypeError("expected record type".to_string())),
             },
             Self::Abs(x, ty1, t2) => {
@@ -372,5 +371,32 @@ impl Term {
 
     pub fn type_of(&self, ctx: &mut Context) -> Result<Rc<Ty>> {
         self.to_de_bruijn(ctx)?.type_of(ctx)?.to_named(ctx)
+    }
+}
+
+impl DeBruijnBinding {
+    pub fn eval(&self, ctx: &Context) -> Self {
+        match self {
+            Self::TermAbb(t, ty) => Self::TermAbb(t.eval(ctx), ty.clone()),
+            _ => self.clone(),
+        }
+    }
+
+    pub fn check(&self, ctx: &mut Context) -> Result<Self> {
+        match self {
+            Self::TermAbb(t, ty) => {
+                let ty_ = t.type_of(ctx)?;
+                if let Some(ty) = ty {
+                    if ty_.eqv(ty, ctx) {
+                        Ok(Self::TermAbb(t.clone(), Some(ty.clone())))
+                    } else {
+                        Err(Error::TypeMismatch)
+                    }
+                } else {
+                    Ok(Self::TermAbb(t.clone(), Some(ty_)))
+                }
+            }
+            _ => Ok(self.clone()),
+        }
     }
 }

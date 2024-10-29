@@ -1,4 +1,4 @@
-use crate::syntax::{Binding, Context, DeBruijnTerm, Term};
+use crate::syntax::{Binding, Context, DeBruijnBinding, DeBruijnTerm, Term};
 use std::rc::Rc;
 use util::error::{Error, Result};
 
@@ -100,5 +100,14 @@ impl Term {
 
     pub fn eval(self: &Rc<Self>, ctx: &mut Context) -> Result<Rc<Self>> {
         self.to_de_bruijn(ctx)?.eval(ctx).to_named(ctx)
+    }
+}
+
+impl DeBruijnBinding {
+    pub fn eval(&self, ctx: &Context) -> Self {
+        match self {
+            Self::TermAbb(t) => Self::TermAbb(t.eval(ctx)),
+            _ => self.clone(),
+        }
     }
 }

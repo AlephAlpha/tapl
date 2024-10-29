@@ -4,7 +4,7 @@ use std::{
 };
 use util::{error::Result, RcTerm};
 
-pub const KEYWORDS: &[&str] = &["lambda"];
+pub const KEYWORDS: &[&str] = &["lambda", "_"];
 pub const COMMANDS: &[&str] = &["eval", "eval1", "bind"];
 
 #[derive(Clone, Debug, PartialEq, RcTerm)]

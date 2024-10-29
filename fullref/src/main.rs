@@ -1,11 +1,14 @@
 #![warn(clippy::nursery)]
 #![warn(clippy::unnested_or_patterns)]
 #![warn(clippy::uninlined_format_args)]
+#![allow(clippy::cognitive_complexity)]
+#![allow(clippy::large_stack_frames)]
 
 mod eval;
 mod parser;
 mod syntax;
 
+use eval::Store;
 use rustyline::{history::DefaultHistory, Editor, Result};
 use syntax::{Command, Context, COMMANDS, KEYWORDS};
 use util::KeywordsCompleter;
@@ -16,9 +19,10 @@ fn main() -> Result<()> {
     rl.set_helper(Some(completer));
 
     let mut ctx = Context::new();
+    let mut store = Store::new();
 
     loop {
-        let input = rl.readline("fullsimple> ");
+        let input = rl.readline("fullref> ");
         match input {
             Ok(line) => {
                 rl.add_history_entry(&line).ok();
@@ -26,14 +30,14 @@ fn main() -> Result<()> {
                     Ok(cmd) => {
                         match cmd {
                             Command::Eval(t) => match t.type_of(&mut ctx) {
-                                Ok(ty) => match t.eval(&mut ctx) {
+                                Ok(ty) => match t.eval(&mut ctx, &mut store) {
                                     Ok(t_) => println!("{t_}: {ty}"),
                                     Err(err) => eprintln!("Evaluation error: {err}"),
                                 },
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
                             Command::Eval1(t) => match t.type_of(&mut ctx) {
-                                Ok(ty) => match t.eval1(&mut ctx) {
+                                Ok(ty) => match t.eval1(&mut ctx, &mut store) {
                                     Ok(t_) => println!("{t_}: {ty}"),
                                     Err(err) => eprintln!("Evaluation error: {err}"),
                                 },
@@ -42,7 +46,8 @@ fn main() -> Result<()> {
                             Command::Bind(x, b) => {
                                 match b.to_de_bruijn(&mut ctx).and_then(|b_| b_.check(&mut ctx)) {
                                     Ok(b_) => {
-                                        ctx.add_binding(&x, b_.eval(&ctx));
+                                        ctx.add_binding(&x, b_.eval(&ctx, &mut store));
+                                        store.shift(1);
                                         rl.helper_mut().unwrap().add_keyword(x);
                                     }
                                     Err(err) => eprintln!("Binding error: {err}"),
