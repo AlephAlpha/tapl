@@ -55,8 +55,6 @@ impl Term {
                 .foldl(Self::proj)
                 .padded();
 
-            let app_ = path.clone().then(path.clone().repeated()).foldl(Self::app);
-
             let succ = text::keyword("succ")
                 .ignore_then(path.clone())
                 .map(Self::succ);
@@ -74,7 +72,9 @@ impl Term {
                 .then(path.clone())
                 .map(|(t1, t2)| Self::times_float(t1, t2));
 
-            let app = choice((succ, pred, is_zero, times_float, app_));
+            let app = choice((succ, pred, is_zero, times_float, path.clone()))
+                .then(path.repeated())
+                .foldl(Self::app);
 
             let if_ = text::keyword("if")
                 .ignore_then(term.clone())

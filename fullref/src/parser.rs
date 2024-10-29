@@ -154,8 +154,6 @@ impl Term {
                 .foldl(Self::proj)
                 .padded();
 
-            let app_ = path.clone().then(path.clone().repeated()).foldl(Self::app);
-
             let ref_ = text::keyword("ref")
                 .ignore_then(path.clone())
                 .map(Self::ref_);
@@ -183,12 +181,24 @@ impl Term {
                 .ignore_then(path.clone())
                 .map(Self::is_zero);
 
-            let app = choice((ref_, deref, fix, times_float, succ, pred, is_zero, app_)).padded();
+            let app = choice((
+                ref_,
+                deref,
+                fix,
+                times_float,
+                succ,
+                pred,
+                is_zero,
+                path.clone(),
+            ))
+            .then(path.repeated())
+            .foldl(Self::app);
 
             let assign = app
                 .clone()
+                .padded()
                 .then_ignore(just(":="))
-                .then(app.clone())
+                .then(app.clone().padded())
                 .map(|(t1, t2)| Self::assign(t1, t2));
 
             let abs = text::keyword("lambda")

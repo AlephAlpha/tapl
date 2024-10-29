@@ -135,8 +135,6 @@ impl Term {
                 .foldl(Self::proj)
                 .padded();
 
-            let app_ = path.clone().then(path.clone().repeated()).foldl(Self::app);
-
             let fix = text::keyword("fix")
                 .ignore_then(path.clone())
                 .map(Self::fix);
@@ -158,7 +156,9 @@ impl Term {
                 .ignore_then(path.clone())
                 .map(Self::is_zero);
 
-            let app = choice((fix, times_float, succ, pred, is_zero, app_));
+            let app = choice((fix, times_float, succ, pred, is_zero, path.clone()))
+                .then(path.repeated())
+                .foldl(Self::app);
 
             let if_ = text::keyword("if")
                 .ignore_then(term.clone())
