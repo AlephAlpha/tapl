@@ -57,7 +57,124 @@ impl DeBruijnTy {
         }
     }
 
-    // TODO: implement `subtype`, `join`, `meet`
+    fn subtype(&self, other: &Self, ctx: &Context) -> bool {
+        if self.eqv(other, ctx) {
+            return true;
+        }
+
+        let self_ = self.simplify(ctx);
+        let other_ = other.simplify(ctx);
+        match (self_.as_ref(), other_.as_ref()) {
+            (Self::Bot, _) | (_, Self::Top) => true,
+            (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => {
+                ty1_.subtype(ty1, ctx) && ty2.subtype(ty2_, ctx)
+            }
+            (Self::Ref(ty), Self::Ref(ty_)) => ty.subtype(ty_, ctx) && ty_.subtype(ty, ctx),
+            (Self::Ref(ty) | Self::Source(ty), Self::Source(ty_)) => ty.subtype(ty_, ctx),
+            (Self::Ref(ty) | Self::Sink(ty), Self::Sink(ty_)) => ty_.subtype(ty, ctx),
+            (Self::Variant(fields), Self::Variant(fields_)) => fields.iter().all(|(l, ty)| {
+                fields_
+                    .iter()
+                    .any(|(l_, ty_)| l == l_ && ty.subtype(ty_, ctx))
+            }),
+            (Self::Record(fields), Self::Record(fields_)) => fields_
+                .iter()
+                .all(|(l_, ty_)| fields.iter().any(|(l, ty)| l_ == l && ty_.subtype(ty, ctx))),
+            _ => false,
+        }
+    }
+
+    fn join(self: &Rc<Self>, other: &Rc<Self>, ctx: &Context) -> Rc<Self> {
+        if self.subtype(other, ctx) {
+            return other.clone();
+        }
+        if other.subtype(self, ctx) {
+            return self.clone();
+        }
+
+        match (self.as_ref(), other.as_ref()) {
+            (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => {
+                Self::arr(ty1.meet(ty1_, ctx), ty2.join(ty2_, ctx))
+            }
+            (Self::Ref(ty), Self::Ref(ty_)) => {
+                if ty.subtype(ty_, ctx) && ty_.subtype(ty, ctx) {
+                    ty.clone()
+                } else {
+                    // Warning: this is incomplete...
+                    Self::source(ty.join(ty_, ctx))
+                }
+            }
+            (Self::Source(ty) | Self::Ref(ty), Self::Source(ty_))
+            | (Self::Source(ty), Self::Ref(ty_)) => Self::source(ty.join(ty_, ctx)),
+            (Self::Sink(ty) | Self::Ref(ty), Self::Sink(ty_))
+            | (Self::Sink(ty), Self::Ref(ty_)) => Self::sink(ty.meet(ty_, ctx)),
+            (Self::Record(fields), Self::Record(fields_)) => {
+                let common_fields = fields
+                    .iter()
+                    .filter_map(|(l, ty)| {
+                        fields_
+                            .iter()
+                            .find(|(l_, _)| l == l_)
+                            .map(|(_, ty_)| (l.clone(), ty.join(ty_, ctx)))
+                    })
+                    .collect::<Vec<_>>();
+                Self::record(common_fields)
+            }
+            _ => Self::top(),
+        }
+    }
+
+    fn meet(self: &Rc<Self>, other: &Rc<Self>, ctx: &Context) -> Rc<Self> {
+        if self.subtype(other, ctx) {
+            return self.clone();
+        }
+        if other.subtype(self, ctx) {
+            return other.clone();
+        }
+
+        match (self.as_ref(), other.as_ref()) {
+            (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => {
+                Self::arr(ty1.join(ty1_, ctx), ty2.meet(ty2_, ctx))
+            }
+            (Self::Ref(ty), Self::Ref(ty_)) => {
+                if ty.subtype(ty_, ctx) && ty_.subtype(ty, ctx) {
+                    ty.clone()
+                } else {
+                    // Warning: this is incomplete...
+                    Self::source(ty.meet(ty_, ctx))
+                }
+            }
+            (Self::Source(ty) | Self::Ref(ty), Self::Source(ty_))
+            | (Self::Source(ty), Self::Ref(ty_)) => Self::source(ty.meet(ty_, ctx)),
+            (Self::Sink(ty) | Self::Ref(ty), Self::Sink(ty_))
+            | (Self::Sink(ty), Self::Ref(ty_)) => Self::sink(ty.join(ty_, ctx)),
+            (Self::Record(fields), Self::Record(fields_)) => {
+                let all_fields = fields
+                    .iter()
+                    .filter_map(|(l, ty)| {
+                        fields_
+                            .iter()
+                            .find(|(l_, _)| l == l_)
+                            .map(|(_, ty_)| (l.clone(), ty.meet(ty_, ctx)))
+                    })
+                    .chain(
+                        fields
+                            .iter()
+                            .filter(|(l, _)| !fields_.iter().any(|(l_, _)| l == l_))
+                            .cloned(),
+                    )
+                    .chain(
+                        fields_
+                            .iter()
+                            .filter(|(l, _)| !fields.iter().any(|(l_, _)| l == l_))
+                            .cloned(),
+                    )
+                    .collect::<Vec<_>>();
+                Self::record(all_fields)
+            }
+            _ => Self::bot(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -259,8 +376,7 @@ impl DeBruijnTerm {
                 let ty2 = t2.type_of(ctx)?;
                 match ty1.simplify(ctx).as_ref() {
                     Ty::Arr(ty11, ty12) => {
-                        // TODO: use `subtype` instead of `eqv` when it's implemented
-                        if ty2.eqv(ty11, ctx) {
+                        if ty2.subtype(ty11, ctx) {
                             Ok(ty12.clone())
                         } else {
                             Err(Error::TypeError("parameter type mismatch".to_string()))
@@ -271,8 +387,7 @@ impl DeBruijnTerm {
                 }
             }
             Self::Ascribe(t, ty) => {
-                // TODO: use `subtype` instead of `eqv` when it's implemented
-                if t.type_of(ctx)?.eqv(ty, ctx) {
+                if t.type_of(ctx)?.subtype(ty, ctx) {
                     Ok(ty.clone())
                 } else {
                     Err(Error::TypeError(
@@ -294,17 +409,8 @@ impl DeBruijnTerm {
             }
             Self::True | Self::False => Ok(Ty::bool()),
             Self::If(t1, t2, t3) => {
-                // TODO: use `subtype` instead of `eqv` when it's implemented
-                if t1.type_of(ctx)?.eqv(&Ty::Bool, ctx) {
-                    // TODO: use `join` when it's implemented
-                    let ty2 = t2.type_of(ctx)?;
-                    if t3.type_of(ctx)?.eqv(&ty2, ctx) {
-                        Ok(ty2)
-                    } else {
-                        Err(Error::TypeError(
-                            "arms of conditional have different types".to_string(),
-                        ))
-                    }
+                if t1.type_of(ctx)?.subtype(&Ty::Bool, ctx) {
+                    Ok(t2.type_of(ctx)?.join(&t3.type_of(ctx)?, ctx))
                 } else {
                     Err(Error::TypeError(
                         "guard of conditional not a boolean".to_string(),
@@ -351,15 +457,9 @@ impl DeBruijnTerm {
                         })
                         .collect::<Result<Vec<_>>>()?;
 
-                    let ty1 = case_tys[0].clone();
-                    // TODO: use `join` when it's implemented
-                    if case_tys.iter().all(|ty| ty.eqv(&ty1, ctx)) {
-                        Ok(ty1)
-                    } else {
-                        Err(Error::TypeError(
-                            "fields do not have the same type".to_string(),
-                        ))
-                    }
+                    case_tys
+                        .iter()
+                        .try_fold(Ty::bot(), |acc, ty| Ok(acc.join(ty, ctx)))
                 }
                 Ty::Bot => Ok(Ty::bot()),
                 _ => Err(Error::TypeError("expected variant type".to_string())),
@@ -367,8 +467,7 @@ impl DeBruijnTerm {
             Self::Tag(l, t, ty) => match ty.simplify(ctx).as_ref() {
                 Ty::Variant(fields) => {
                     if let Some((_, ty_)) = fields.iter().find(|(l_, _)| l_ == l) {
-                        // TODO: use `subtype` instead of `eqv` when it's implemented
-                        if t.type_of(ctx)?.eqv(ty_, ctx) {
+                        if t.type_of(ctx)?.subtype(ty_, ctx) {
                             Ok(ty.clone())
                         } else {
                             Err(Error::TypeError(
@@ -385,8 +484,7 @@ impl DeBruijnTerm {
             },
             Self::Fix(t) => match t.type_of(ctx)?.simplify(ctx).as_ref() {
                 Ty::Arr(ty1, ty2) => {
-                    // TODO: use `subtype` instead of `eqv` when it's implemented
-                    if ty1.eqv(ty2, ctx) {
+                    if ty1.subtype(ty2, ctx) {
                         Ok(ty1.clone())
                     } else {
                         Err(Error::TypeError(
@@ -398,9 +496,8 @@ impl DeBruijnTerm {
                 _ => Err(Error::TypeError("arrow type expected".to_string())),
             },
             Self::Deref(t) => match t.type_of(ctx)?.simplify(ctx).as_ref() {
-                Ty::Ref(ty) => Ok(ty.clone()),
+                Ty::Ref(ty) | Ty::Source(ty) => Ok(ty.clone()),
                 Ty::Bot => Ok(Ty::bot()),
-                Ty::Source(ty) => Ok(ty.clone()),
                 _ => Err(Error::TypeError(
                     "argument of ! is not a Ref or Source".to_string(),
                 )),
@@ -409,9 +506,8 @@ impl DeBruijnTerm {
                 let ty1 = t1.type_of(ctx)?;
                 let ty2 = t2.type_of(ctx)?;
                 match ty1.simplify(ctx).as_ref() {
-                    Ty::Ref(ty) => {
-                        // TODO: use `subtype` instead of `eqv` when it's implemented
-                        if ty2.eqv(ty, ctx) {
+                    Ty::Ref(ty) | Ty::Sink(ty) => {
+                        if ty2.subtype(ty, ctx) {
                             Ok(Ty::unit())
                         } else {
                             Err(Error::TypeError(
@@ -420,16 +516,6 @@ impl DeBruijnTerm {
                         }
                     }
                     Ty::Bot => Ok(Ty::bot()),
-                    Ty::Sink(ty) => {
-                        // TODO: use `subtype` instead of `eqv` when it's implemented
-                        if ty2.eqv(ty, ctx) {
-                            Ok(Ty::unit())
-                        } else {
-                            Err(Error::TypeError(
-                                "arguments of := are incompatible".to_string(),
-                            ))
-                        }
-                    }
                     _ => Err(Error::TypeError(
                         "argument of ! is not a Ref or Sink".to_string(),
                     )),
@@ -437,8 +523,9 @@ impl DeBruijnTerm {
             }
             Self::Float(_) => Ok(Ty::float()),
             Self::TimesFloat(t1, t2) => {
-                // TODO: use `subtype` instead of `eqv` when it's implemented
-                if t1.type_of(ctx)?.eqv(&Ty::Float, ctx) && t2.type_of(ctx)?.eqv(&Ty::Float, ctx) {
+                if t1.type_of(ctx)?.subtype(&Ty::Float, ctx)
+                    && t2.type_of(ctx)?.subtype(&Ty::Float, ctx)
+                {
                     Ok(Ty::float())
                 } else {
                     Err(Error::TypeError(
@@ -448,8 +535,7 @@ impl DeBruijnTerm {
             }
             Self::Zero => Ok(Ty::nat()),
             Self::Succ(t) => {
-                // TODO: use `subtype` instead of `eqv` when it's implemented
-                if t.type_of(ctx)?.eqv(&Ty::Nat, ctx) {
+                if t.type_of(ctx)?.subtype(&Ty::Nat, ctx) {
                     Ok(Ty::nat())
                 } else {
                     Err(Error::TypeError(
@@ -458,8 +544,7 @@ impl DeBruijnTerm {
                 }
             }
             Self::Pred(t) => {
-                // TODO: use `subtype` instead of `eqv` when it's implemented
-                if t.type_of(ctx)?.eqv(&Ty::Nat, ctx) {
+                if t.type_of(ctx)?.subtype(&Ty::Nat, ctx) {
                     Ok(Ty::nat())
                 } else {
                     Err(Error::TypeError(
@@ -468,8 +553,7 @@ impl DeBruijnTerm {
                 }
             }
             Self::IsZero(t) => {
-                // TODO: use `subtype` instead of `eqv` when it's implemented
-                if t.type_of(ctx)?.eqv(&Ty::Nat, ctx) {
+                if t.type_of(ctx)?.subtype(&Ty::Nat, ctx) {
                     Ok(Ty::bool())
                 } else {
                     Err(Error::TypeError(
@@ -509,8 +593,7 @@ impl DeBruijnBinding {
             Self::TermAbb(t, ty) => {
                 let ty_ = t.type_of(ctx)?;
                 if let Some(ty) = ty {
-                    // TODO: use `subtype` instead of `eqv` when it's implemented
-                    if ty_.eqv(ty, ctx) {
+                    if ty_.subtype(ty, ctx) {
                         Ok(Self::TermAbb(t.clone(), Some(ty.clone())))
                     } else {
                         Err(Error::TypeMismatch)

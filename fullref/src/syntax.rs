@@ -410,7 +410,7 @@ impl DeBruijnTerm {
             Self::Var(x) => on_var(cutoff, *x),
             Self::Abs(x, ty, t) => Self::abs(
                 x.clone(),
-                ty.clone(),
+                on_type(cutoff, ty),
                 t.map_vars_walk(cutoff + 1, on_var, on_type),
             ),
             Self::App(t1, t2) => Self::app(

@@ -9,6 +9,7 @@ members = [
     "simplebool",
     "fullsimple",
     "fullref",
+    "fullerror",
 ]
 
 resolver = "2"
