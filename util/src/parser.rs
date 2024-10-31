@@ -32,7 +32,7 @@ pub fn int() -> impl Parser<char, u64, Error = Simple<char>> + Clone {
     })
 }
 
-pub fn ident(
+fn ident(
     kerwords: impl IntoIterator<Item = impl Into<String>>,
 ) -> impl Parser<char, String, Error = Simple<char>> + Clone {
     let kerwords = kerwords.into_iter().map(Into::into).collect::<Vec<_>>();
@@ -41,6 +41,36 @@ pub fn ident(
             Err(Simple::custom(span, format!("unexpected keyword: {s}")))
         } else {
             Ok(s)
+        }
+    })
+}
+
+pub fn var_ident(
+    kerwords: impl IntoIterator<Item = impl Into<String>>,
+) -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    ident(kerwords).try_map(|s: String, span| {
+        if s.chars().next().is_some_and(char::is_lowercase) {
+            Ok(s)
+        } else {
+            Err(Simple::custom(
+                span,
+                format!("expected a variable identifier, got {s}"),
+            ))
+        }
+    })
+}
+
+pub fn ty_ident(
+    kerwords: impl IntoIterator<Item = impl Into<String>>,
+) -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    ident(kerwords).try_map(|s: String, span| {
+        if s.chars().next().is_some_and(char::is_uppercase) {
+            Ok(s)
+        } else {
+            Err(Simple::custom(
+                span,
+                format!("expected a type identifier, got {s}"),
+            ))
         }
     })
 }

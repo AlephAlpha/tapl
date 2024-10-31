@@ -1,0 +1,9 @@
+[package]
+name = "rcdsub"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+chumsky = { workspace = true }
+rustyline = { workspace = true }
+util = { workspace = true }

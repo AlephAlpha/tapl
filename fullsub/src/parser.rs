@@ -11,9 +11,10 @@ impl Ty {
         recursive(|ty| {
             let var = Self::ident().map(Self::var);
 
+            let top = text::keyword("Top").to(Self::top());
             let string = text::keyword("String").to(Self::string());
-            let bool = text::keyword("Bool").to(Self::bool());
             let unit = text::keyword("Unit").to(Self::unit());
+            let bool = text::keyword("Bool").to(Self::bool());
             let float = text::keyword("Float").to(Self::float());
             let nat = text::keyword("Nat").to(Self::nat());
 
@@ -36,21 +37,15 @@ impl Ty {
                 .then_ignore(just('}'))
                 .map(Self::record);
 
-            let variant = just('<')
-                .ignore_then(fields.clone())
-                .then_ignore(just('>'))
-                .map(Self::variant);
-
             let parens = ty.clone().delimited_by(just('('), just(')'));
 
-            let atom =
-                choice((string, bool, unit, float, nat, record, variant, parens, var)).padded();
+            let atom = choice((top, string, bool, unit, float, nat, record, parens, var)).padded();
 
             let arrow = atom
                 .clone()
                 .then_ignore(just("->"))
                 .repeated()
-                .then(atom)
+                .then(atom.clone())
                 .foldr(Self::arr);
 
             arrow.padded()
@@ -71,9 +66,9 @@ impl Term {
         recursive(|term| {
             let var = Self::ident().map(Self::var);
 
+            let unit = text::keyword("unit").to(Self::unit());
             let true_ = text::keyword("true").to(Self::true_());
             let false_ = text::keyword("false").to(Self::false_());
-            let unit = text::keyword("unit").to(Self::unit());
 
             let string = util::parser::string().map(Self::string);
             let float = util::parser::float().map(Self::float);
@@ -98,23 +93,19 @@ impl Term {
                 .then_ignore(just('}'))
                 .map(Self::record);
 
-            let tag = just('<')
-                .ignore_then(text::ident().padded())
-                .then_ignore(just('='))
-                .then(term.clone())
-                .then_ignore(just('>'))
-                .then_ignore(text::keyword("as").padded())
-                .then(Ty::parser())
-                .map(|((l, t1), t2)| Self::tag(l, t1, t2));
-
             let inert = text::keyword("inert")
                 .ignore_then(Ty::parser().delimited_by(just('['), just(']')).padded())
                 .map(Self::inert);
 
-            let parens = term.clone().delimited_by(just('('), just(')'));
+            let seq = term
+                .clone()
+                .then(just(';').ignore_then(term.clone()).repeated())
+                .foldl(|t1, t2| Self::app(Self::abs("_", Ty::unit(), t2), t1));
+
+            let parens = seq.delimited_by(just('('), just(')'));
 
             let atom = choice((
-                true_, false_, unit, string, float, int, record, tag, inert, parens, var,
+                true_, false_, unit, string, float, int, record, inert, parens, var,
             ))
             .padded();
 
@@ -160,14 +151,6 @@ impl Term {
                 .then(path.repeated())
                 .foldl(Self::app);
 
-            let if_ = text::keyword("if")
-                .ignore_then(term.clone())
-                .then_ignore(text::keyword("then"))
-                .then(term.clone())
-                .then_ignore(text::keyword("else"))
-                .then(term.clone())
-                .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
-
             let abs = text::keyword("lambda")
                 .ignore_then(Self::ident_or_underscore().padded())
                 .then_ignore(just(':'))
@@ -175,6 +158,14 @@ impl Term {
                 .then_ignore(just('.'))
                 .then(term.clone())
                 .map(|((x, ty), t)| Self::abs(x, ty, t));
+
+            let if_ = text::keyword("if")
+                .ignore_then(term.clone())
+                .then_ignore(text::keyword("then"))
+                .then(term.clone())
+                .then_ignore(text::keyword("else"))
+                .then(term.clone())
+                .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
             let let_ = text::keyword("let")
                 .ignore_then(Self::ident_or_underscore().padded())
@@ -196,25 +187,7 @@ impl Term {
                     Self::let_(x.clone(), Self::fix(Self::abs(x, ty, t1)), t2)
                 });
 
-            let cases = just('<')
-                .ignore_then(text::ident().padded())
-                .then_ignore(just('='))
-                .then(Self::ident().padded())
-                .then_ignore(just('>'))
-                .then_ignore(just("==>").padded())
-                .then(term.clone())
-                .padded()
-                .map(|((l, t1), t2)| (l, t1, t2))
-                .separated_by(just('|'))
-                .at_least(1);
-
-            let case = text::keyword("case")
-                .ignore_then(term.clone())
-                .then_ignore(text::keyword("of"))
-                .then(cases)
-                .map(|(t, cases)| Self::case(t, cases));
-
-            choice((if_, abs, let_, let_rec, case, app)).padded()
+            choice((if_, abs, let_, let_rec, app)).padded()
         })
     }
 }

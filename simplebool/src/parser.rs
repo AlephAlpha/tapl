@@ -24,9 +24,17 @@ impl Ty {
 }
 
 impl Term {
+    fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+        util::parser::var_ident(KEYWORDS.iter().copied())
+    }
+
+    fn ident_or_underscore() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+        Self::ident().or(text::keyword("_").to("_".to_string()))
+    }
+
     fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
         recursive(|term| {
-            let var = util::parser::ident(KEYWORDS.iter().copied()).map(Self::var);
+            let var = Self::ident().map(Self::var);
 
             let true_ = text::keyword("true").to(Self::true_());
             let false_ = text::keyword("false").to(Self::false_());
@@ -49,7 +57,7 @@ impl Term {
                 .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
             let abs = text::keyword("lambda")
-                .ignore_then(text::ident().padded())
+                .ignore_then(Self::ident_or_underscore().padded())
                 .then_ignore(just(':'))
                 .then(Ty::parser())
                 .then_ignore(just('.'))
@@ -87,7 +95,7 @@ impl Command {
             .map(Self::Eval);
         let bind = just(':')
             .then(text::keyword("bind"))
-            .ignore_then(text::ident().padded())
+            .ignore_then(Term::ident().padded())
             .then(Binding::parser())
             .map(|(x, b)| Self::Bind(x, b));
         let type_ = just(':')

@@ -31,7 +31,7 @@ pub const KEYWORDS: &[&str] = &[
     "Bool",
     "Nat",
 ];
-pub const COMMANDS: &[&str] = &["eval", "eval1", "bind", "bindtype", "type"];
+pub const COMMANDS: &[&str] = &["eval", "eval1", "bind", "type"];
 
 #[derive(Clone, Debug, PartialEq, RcTerm)]
 pub enum Ty<V = String> {

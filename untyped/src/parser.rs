@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 impl Term {
     fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
-        util::parser::ident(KEYWORDS.iter().copied())
+        util::parser::var_ident(KEYWORDS.iter().copied())
     }
 
     fn ident_or_underscore() -> impl Parser<char, String, Error = Simple<char>> + Clone {

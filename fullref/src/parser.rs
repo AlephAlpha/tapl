@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 impl Ty {
     fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
-        util::parser::ident(KEYWORDS.iter().copied())
+        util::parser::ty_ident(KEYWORDS.iter().copied())
     }
 
     fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
@@ -74,7 +74,7 @@ impl Ty {
 
 impl Term {
     fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
-        util::parser::ident(KEYWORDS.iter().copied())
+        util::parser::var_ident(KEYWORDS.iter().copied())
     }
 
     fn ident_or_underscore() -> impl Parser<char, String, Error = Simple<char>> + Clone {
@@ -296,13 +296,12 @@ impl Command {
             .map(Self::Eval);
         let bind = just(':')
             .then(text::keyword("bind"))
-            .ignore_then(Term::ident().padded())
-            .then(Binding::parser())
-            .map(|(x, b)| Self::Bind(x, b));
-        let bind_type = just(':')
-            .then(text::keyword("bindtype"))
-            .ignore_then(Term::ident().padded())
-            .then(Binding::ty_parser())
+            .ignore_then(
+                Term::ident()
+                    .padded()
+                    .then(Binding::parser())
+                    .or(Ty::ident().padded().then(Binding::ty_parser())),
+            )
             .map(|(x, b)| Self::Bind(x, b));
         let type_ = just(':')
             .then(text::keyword("type"))
@@ -310,6 +309,6 @@ impl Command {
             .map(Self::Type);
         let noop = text::whitespace().to(Self::Noop);
 
-        choice((eval1, eval, bind, bind_type, type_, term, noop)).then_ignore(end())
+        choice((eval1, eval, bind, type_, term, noop)).then_ignore(end())
     }
 }
