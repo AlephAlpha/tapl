@@ -1,6 +1,7 @@
 #![warn(clippy::nursery)]
 #![warn(clippy::unnested_or_patterns)]
 #![warn(clippy::uninlined_format_args)]
+#![allow(clippy::cognitive_complexity)]
 
 mod eval;
 mod parser;
@@ -18,7 +19,7 @@ fn main() -> Result<()> {
     let mut ctx = Context::new();
 
     loop {
-        let input = rl.readline("fullerror> ");
+        let input = rl.readline("fullisorec> ");
         match input {
             Ok(line) => {
                 rl.add_history_entry(&line).ok();

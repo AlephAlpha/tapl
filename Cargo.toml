@@ -12,6 +12,9 @@ members = [
     "fullerror",
     "fullsub",
     "rcdsub",
+    "bot",
+    "fullequirec",
+    "fullisorec",
 ]
 
 resolver = "2"

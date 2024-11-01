@@ -1,8 +1,6 @@
 #![warn(clippy::nursery)]
 #![warn(clippy::unnested_or_patterns)]
 #![warn(clippy::uninlined_format_args)]
-#![allow(clippy::cognitive_complexity)]
-#![allow(clippy::large_stack_frames)]
 
 mod eval;
 mod parser;

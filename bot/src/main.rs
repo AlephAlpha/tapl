@@ -18,7 +18,7 @@ fn main() -> Result<()> {
     let mut ctx = Context::new();
 
     loop {
-        let input = rl.readline("fullerror> ");
+        let input = rl.readline("bot> ");
         match input {
             Ok(line) => {
                 rl.add_history_entry(&line).ok();
@@ -40,13 +40,8 @@ fn main() -> Result<()> {
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
                             Command::Bind(x, b) => {
-                                match b.to_de_bruijn(&mut ctx).and_then(|b_| b_.check(&mut ctx)) {
-                                    Ok(b_) => {
-                                        ctx.add_binding(&x, b_.eval(&ctx));
-                                        rl.helper_mut().unwrap().add_keyword(x);
-                                    }
-                                    Err(err) => eprintln!("Binding error: {err}"),
-                                }
+                                ctx.add_binding(&x, b);
+                                rl.helper_mut().unwrap().add_keyword(x);
                             }
                             Command::Type(t) => match t.type_of(&mut ctx) {
                                 Ok(ty) => println!("{t}: {ty}"),
