@@ -260,6 +260,10 @@ impl<V: Display> Term<V> {
             }
             Self::Fold(ty) => write!(f, "fold [{ty}]"),
             Self::Unfold(ty) => write!(f, "unfold [{ty}]"),
+            Self::Fix(t) => {
+                write!(f, "fix ")?;
+                t.fmt_atom(f)
+            }
             _ => self.fmt_path(f),
         }
     }
@@ -281,7 +285,6 @@ impl<V: Display> Display for Term<V> {
             }
             Self::Let(x, t1, t2) => write!(f, "let {x} = {t1} in {t2}"),
             Self::Abs(x, ty, t) => write!(f, "lambda {x}: {ty}. {t}"),
-            Self::Fix(t) => write!(f, "fix {t}"),
             _ => self.fmt_app(f),
         }
     }

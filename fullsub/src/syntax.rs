@@ -232,6 +232,10 @@ impl<V: Display> Term<V> {
                 write!(f, "iszero ")?;
                 t.fmt_atom(f)
             }
+            Self::Fix(t) => {
+                write!(f, "fix ")?;
+                t.fmt_atom(f)
+            }
             _ => self.fmt_path(f),
         }
     }
@@ -242,7 +246,6 @@ impl<V: Display> Display for Term<V> {
         match self {
             Self::Abs(x, ty, t) => write!(f, "lambda {x}: {ty}. {t}"),
             Self::Let(x, t1, t2) => write!(f, "let {x} = {t1} in {t2}"),
-            Self::Fix(t) => write!(f, "fix {t}"),
             Self::If(t1, t2, t3) => {
                 write!(f, "if {t1} then {t2} else {t3}")
             }

@@ -21,7 +21,7 @@ resolver = "2"
 
 [workspace.dependencies]
 chumsky = "0.9.3"
-rustyline = { version = "14.0.0", features = ["derive"] }
-thiserror = "1.0.65"
+rustyline = { version = "15.0.0", features = ["derive"] }
+thiserror = "2.0.9"
 util = { path = "util" }
 util-derive = { path = "util-derive" }

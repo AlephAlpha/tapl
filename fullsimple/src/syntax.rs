@@ -249,6 +249,10 @@ impl<V: Display> Term<V> {
                 write!(f, " ")?;
                 t2.fmt_atom(f)
             }
+            Self::Fix(t) => {
+                write!(f, "fix ")?;
+                t.fmt_atom(f)
+            }
             _ => self.fmt_path(f),
         }
     }
@@ -276,7 +280,6 @@ impl<V: Display> Display for Term<V> {
             Self::Abs(x, ty, t) => {
                 write!(f, "lambda {x}: {ty}. {t}")
             }
-            Self::Fix(t) => write!(f, "fix {t}"),
             _ => self.fmt_app(f),
         }
     }

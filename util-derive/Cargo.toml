@@ -10,6 +10,6 @@ proc-macro = true
 check_keyword = "0.3.1"
 convert_case = "0.6.0"
 darling = "0.20.10"
-proc-macro2 = "1.0.89"
-quote = "1.0.37"
-syn = { version = "2.0.85", features = ["full"] }
+proc-macro2 = "1.0.92"
+quote = "1.0.38"
+syn = { version = "2.0.95", features = ["full"] }

@@ -1,3 +1,6 @@
+#![warn(clippy::nursery)]
+#![allow(clippy::option_if_let_else)]
+
 use check_keyword::CheckKeyword;
 use convert_case::{Case, Casing};
 use darling::{
