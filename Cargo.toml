@@ -16,6 +16,7 @@ members = [
     "fullequirec",
     "fullisorec",
     "recon",
+    "fullrecon",
 ]
 
 resolver = "2"
@@ -23,6 +24,6 @@ resolver = "2"
 [workspace.dependencies]
 chumsky = "0.9.3"
 rustyline = { version = "15.0.0", features = ["derive"] }
-thiserror = "2.0.9"
+thiserror = "2.0.10"
 util = { path = "util" }
 util-derive = { path = "util-derive" }

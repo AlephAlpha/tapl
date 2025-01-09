@@ -42,6 +42,13 @@ impl DeBruijnTerm {
                 Self::Succ(t) if t.is_numeric_val() => Ok(Self::false_()),
                 _ => Ok(Self::is_zero(t.eval1(ctx)?)),
             },
+            Self::Let(x, t1, t2) => {
+                if t1.is_val(ctx) {
+                    Ok(t2.subst_top(t1))
+                } else {
+                    Ok(Self::let_(x.clone(), t1.eval1(ctx)?, t2.clone()))
+                }
+            }
             _ => Err(Error::NoRuleApplies),
         }
     }
@@ -204,7 +211,8 @@ impl DeBruijnTerm {
                     ctx.index_to_name(*i).unwrap()
                 ))),
             },
-            Self::Abs(x, ty1, t2) => {
+            Self::Abs(x, ty, t2) => {
+                let ty1 = ty.clone().unwrap_or_else(|| uvar_gen.fresh());
                 ctx.with_binding(x.clone(), Binding::Var(ty1.clone()), |ctx| {
                     let ty2 = t2.recon(ctx, uvar_gen, constr)?;
                     Ok(Ty::arr(ty1.clone(), ty2))
@@ -216,6 +224,17 @@ impl DeBruijnTerm {
                 let ty3 = uvar_gen.fresh();
                 constr.push((ty1, Ty::arr(ty2, ty3.clone())));
                 Ok(ty3)
+            }
+            Self::Let(x, t1, t2) => {
+                if t1.is_val(ctx) {
+                    let _ = t1.recon(ctx, uvar_gen, constr)?;
+                    t2.subst_top(t1).recon(ctx, uvar_gen, constr)
+                } else {
+                    let ty1 = t1.recon(ctx, uvar_gen, constr)?;
+                    ctx.with_binding(x.clone(), Binding::Var(ty1), |ctx| {
+                        t2.recon(ctx, uvar_gen, constr)
+                    })
+                }
             }
             Self::Zero => Ok(Ty::nat()),
             Self::Succ(t) => {
