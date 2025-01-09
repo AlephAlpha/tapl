@@ -15,6 +15,7 @@ members = [
     "bot",
     "fullequirec",
     "fullisorec",
+    "recon",
 ]
 
 resolver = "2"

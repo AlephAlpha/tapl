@@ -13,6 +13,8 @@ pub enum Error {
     TypeMismatch,
     #[error("{0}")]
     TypeError(String),
+    #[error("{0}")]
+    UnificationError(String),
 }
 
 pub type Result<T, E = Error> = StdResult<T, E>;
