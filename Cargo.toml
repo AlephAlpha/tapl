@@ -17,6 +17,7 @@ members = [
     "fullisorec",
     "recon",
     "fullrecon",
+    "fullpoly",
 ]
 
 resolver = "2"
