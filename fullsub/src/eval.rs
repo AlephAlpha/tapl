@@ -73,7 +73,9 @@ impl DeBruijnTy {
             return self.clone();
         }
 
-        match (self.as_ref(), other.as_ref()) {
+        let self_ = self.simplify(ctx);
+        let other_ = other.simplify(ctx);
+        match (self_.as_ref(), other_.as_ref()) {
             (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => ty1
                 .meet(ty1_, ctx)
                 .map_or_else(Self::top, |ty11| Self::arr(ty11, ty2.join(ty2_, ctx))),
@@ -101,7 +103,9 @@ impl DeBruijnTy {
             return Some(other.clone());
         }
 
-        match (self.as_ref(), other.as_ref()) {
+        let self_ = self.simplify(ctx);
+        let other_ = other.simplify(ctx);
+        match (self_.as_ref(), other_.as_ref()) {
             (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => {
                 Some(Self::arr(ty1.join(ty1_, ctx), ty2.meet(ty2_, ctx)?))
             }
