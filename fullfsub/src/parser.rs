@@ -286,7 +286,7 @@ impl Binding {
             .ignore_then(Ty::parser())
             .or_not()
             .map(|ty| ty.unwrap_or_else(Ty::top))
-            .map(Self::TyAbb);
+            .map(Self::TyVar);
         let ty_abb = just('=').ignore_then(Ty::parser()).map(Self::TyAbb);
 
         choice((ty_abb, ty_var)).padded()

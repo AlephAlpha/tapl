@@ -230,7 +230,7 @@ impl<V: Display> Term<V> {
                 t2.fmt_atom(f)
             }
             Self::TApp(t, ty) => {
-                t.fmt_path(f)?;
+                t.fmt_app(f)?;
                 write!(f, " [{ty}]")
             }
             Self::Succ(t) if !t.is_int() => {

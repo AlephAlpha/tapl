@@ -19,6 +19,7 @@ members = [
     "fullrecon",
     "fullpoly",
     "fullfsub",
+    "purefsub",
 ]
 
 resolver = "2"
