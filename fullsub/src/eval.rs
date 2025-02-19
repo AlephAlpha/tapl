@@ -163,7 +163,7 @@ impl DeBruijnTerm {
     pub fn eval1(&self, ctx: &Context) -> Result<Rc<Self>> {
         match self {
             Self::App(t1, t2) => match t1.as_ref() {
-                Self::Abs(_, _, t) if t2.is_val(ctx) => Ok(t.subst_top(t2)),
+                Self::Abs(_, _, t) if t2.is_val(ctx) => t.subst_top(t2),
                 _ => {
                     if t1.is_val(ctx) {
                         Ok(Self::app(t1.clone(), t2.eval1(ctx)?))
@@ -181,13 +181,13 @@ impl DeBruijnTerm {
             }
             Self::Let(x, t1, t2) => {
                 if t1.is_val(ctx) {
-                    Ok(t2.subst_top(t1))
+                    t2.subst_top(t1)
                 } else {
                     Ok(Self::let_(x.clone(), t1.eval1(ctx)?, t2.clone()))
                 }
             }
             Self::Fix(t) => match t.as_ref() {
-                Self::Abs(_, _, t1) => Ok(t1.subst_top(&Self::fix(t.clone()))),
+                Self::Abs(_, _, t1) => t1.subst_top(&Self::fix(t.clone())),
                 t if t.is_val(ctx) => Err(Error::NoRuleApplies),
                 _ => Ok(Self::fix(t.eval1(ctx)?)),
             },
@@ -262,7 +262,7 @@ impl DeBruijnTerm {
             Self::Abs(x, ty1, t2) => {
                 ctx.with_binding(x.clone(), Binding::Var(ty1.clone()), |ctx| {
                     let ty2 = t2.type_of(ctx)?;
-                    Ok(Ty::arr(ty1.clone(), ty2.shift(-1)))
+                    Ok(Ty::arr(ty1.clone(), ty2.shift(-1)?))
                 })
             }
             Self::App(t1, t2) => {
@@ -293,7 +293,7 @@ impl DeBruijnTerm {
             Self::Let(x, t1, t2) => {
                 let ty1 = t1.type_of(ctx)?;
                 ctx.with_binding(x.clone(), Binding::Var(ty1), |ctx| {
-                    Ok(t2.type_of(ctx)?.shift(-1))
+                    t2.type_of(ctx)?.shift(-1)
                 })
             }
             Self::True | Self::False => Ok(Ty::bool()),

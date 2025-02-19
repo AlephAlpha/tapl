@@ -5,7 +5,7 @@ use util::error::{Error, Result};
 impl DeBruijnTy {
     fn compute(&self, ctx: &Context) -> Result<Rc<Self>> {
         match self {
-            Self::Rec(_, ty) => Ok(ty.subst_top(self)),
+            Self::Rec(_, ty) => ty.subst_top(self),
             Self::Var(i) => match ctx.get_binding_shifting(*i) {
                 Ok(Binding::TyAbb(t)) => Ok(t),
                 _ => Err(Error::NoRuleApplies),
@@ -35,8 +35,12 @@ impl DeBruijnTy {
             | (Self::String, Self::String)
             | (Self::Bool, Self::Bool)
             | (Self::Nat, Self::Nat) => true,
-            (Self::Rec(_, ty), _) => ty.subst_top(self).eqv_walk(other, seen, ctx),
-            (_, Self::Rec(_, ty)) => self.eqv_walk(&ty.subst_top(other), seen, ctx),
+            (Self::Rec(_, ty), _) => ty
+                .subst_top(self)
+                .is_ok_and(|ty_| ty_.eqv_walk(other, seen, ctx)),
+            (_, Self::Rec(_, ty)) => ty
+                .subst_top(other)
+                .is_ok_and(|ty_| self.eqv_walk(&ty_, seen, ctx)),
             (Self::Var(i), _) => match ctx.get_binding_shifting(*i) {
                 Ok(Binding::TyAbb(ty)) => ty.eqv_walk(other, seen, ctx),
                 _ => match other {
@@ -110,7 +114,7 @@ impl DeBruijnTerm {
                 _ => Err(Error::NoRuleApplies),
             },
             Self::App(t1, t2) => match t1.as_ref() {
-                Self::Abs(_, _, t) if t2.is_val(ctx) => Ok(t.subst_top(t2)),
+                Self::Abs(_, _, t) if t2.is_val(ctx) => t.subst_top(t2),
                 _ => {
                     if t1.is_val(ctx) {
                         Ok(Self::app(t1.clone(), t2.eval1(ctx)?))
@@ -126,7 +130,7 @@ impl DeBruijnTerm {
             },
             Self::Let(x, t1, t2) => {
                 if t1.is_val(ctx) {
-                    Ok(t2.subst_top(t1))
+                    t2.subst_top(t1)
                 } else {
                     Ok(Self::let_(x.clone(), t1.eval1(ctx)?, t2.clone()))
                 }
@@ -135,7 +139,7 @@ impl DeBruijnTerm {
             Self::Case(t, cases) => match t.as_ref() {
                 Self::Tag(l, t1, _) if t1.is_val(ctx) => {
                     if let Some((_, _, t2)) = cases.iter().find(|(l_, _, _)| l_ == l) {
-                        Ok(t2.subst_top(t1))
+                        t2.subst_top(t1)
                     } else {
                         Err(Error::NoRuleApplies)
                     }
@@ -162,7 +166,7 @@ impl DeBruijnTerm {
                 _ => Ok(Self::proj(t.eval1(ctx)?, l.clone())),
             },
             Self::Fix(t) => match t.as_ref() {
-                Self::Abs(_, _, t1) => Ok(t1.subst_top(&Self::fix(t.clone()))),
+                Self::Abs(_, _, t1) => t1.subst_top(&Self::fix(t.clone())),
                 t if t.is_val(ctx) => Err(Error::NoRuleApplies),
                 _ => Ok(Self::fix(t.eval1(ctx)?)),
             },
@@ -244,7 +248,7 @@ impl DeBruijnTerm {
                                     Error::TypeError(format!("label {x} not in type"))
                                 })?;
                             ctx.with_binding(x.clone(), Binding::Var(ty), |ctx| {
-                                Ok(t.type_of(ctx)?.shift(-1))
+                                t.type_of(ctx)?.shift(-1)
                             })
                         })
                         .collect::<Result<Vec<_>>>()?;
@@ -301,7 +305,7 @@ impl DeBruijnTerm {
             Self::Let(x, t1, t2) => {
                 let ty1 = t1.type_of(ctx)?;
                 ctx.with_binding(x.clone(), Binding::Var(ty1), |ctx| {
-                    Ok(t2.type_of(ctx)?.shift(-1))
+                    t2.type_of(ctx)?.shift(-1)
                 })
             }
             Self::Record(fields) => {
@@ -322,7 +326,7 @@ impl DeBruijnTerm {
             Self::Abs(x, ty1, t2) => {
                 ctx.with_binding(x.clone(), Binding::Var(ty1.clone()), |ctx| {
                     let ty2 = t2.type_of(ctx)?;
-                    Ok(Ty::arr(ty1.clone(), ty2.shift(-1)))
+                    Ok(Ty::arr(ty1.clone(), ty2.shift(-1)?))
                 })
             }
             Self::App(t1, t2) => {

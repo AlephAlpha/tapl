@@ -102,7 +102,7 @@ impl DeBruijnTerm {
             },
             Self::App(t1, t2) => match t1.as_ref() {
                 Self::Error => Ok(Self::error()),
-                Self::Abs(_, _, t) if t2.is_val(ctx) => Ok(t.subst_top(t2)),
+                Self::Abs(_, _, t) if t2.is_val(ctx) => t.subst_top(t2),
                 _ => {
                     if t1.is_val(ctx) {
                         match t2.as_ref() {
@@ -144,7 +144,7 @@ impl DeBruijnTerm {
             Self::Abs(x, ty1, t2) => {
                 ctx.with_binding(x.clone(), Binding::Var(ty1.clone()), |ctx| {
                     let ty2 = t2.type_of(ctx)?;
-                    Ok(Ty::arr(ty1.clone(), ty2.shift(-1)))
+                    Ok(Ty::arr(ty1.clone(), ty2.shift(-1)?))
                 })
             }
             Self::App(t1, t2) => {

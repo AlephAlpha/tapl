@@ -10,7 +10,7 @@ impl DeBruijnTerm {
     pub fn eval1(&self, ctx: &Context) -> Result<Rc<Self>> {
         match self {
             Self::App(t1, t2) => match t1.as_ref() {
-                Self::Abs(_, _, t) if t2.is_val(ctx) => Ok(t.subst_top(t2)),
+                Self::Abs(_, _, t) if t2.is_val(ctx) => t.subst_top(t2),
                 _ => {
                     if t1.is_val(ctx) {
                         Ok(Self::app(t1.clone(), t2.eval1(ctx)?))

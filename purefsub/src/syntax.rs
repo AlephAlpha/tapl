@@ -2,7 +2,10 @@ use std::{
     fmt::{self, Display, Formatter},
     rc::Rc,
 };
-use util::{error::Result, BindingShift, RcTerm};
+use util::{
+    error::{Error, Result},
+    BindingShift, RcTerm,
+};
 
 pub const KEYWORDS: &[&str] = &["lambda", "_", "Top", "Nat", "All"];
 pub const COMMANDS: &[&str] = &["eval", "eval1", "bind", "type"];
@@ -130,61 +133,61 @@ impl DeBruijnTy {
     fn map_vars_walk(
         &self,
         cutoff: usize,
-        on_var: &mut impl FnMut(usize, usize) -> Rc<Self>,
-    ) -> Rc<Self> {
+        on_var: &mut impl FnMut(usize, usize) -> Result<Rc<Self>>,
+    ) -> Result<Rc<Self>> {
         match self {
-            Self::Top => Self::top(),
+            Self::Top => Ok(Self::top()),
             Self::Var(x) => on_var(cutoff, *x),
-            Self::All(x, ty1, ty2) => Self::all(
+            Self::All(x, ty1, ty2) => Ok(Self::all(
                 x.clone(),
-                ty1.map_vars_walk(cutoff, on_var),
-                ty2.map_vars_walk(cutoff + 1, on_var),
-            ),
-            Self::Arr(t1, t2) => Self::arr(
-                t1.map_vars_walk(cutoff, on_var),
-                t2.map_vars_walk(cutoff, on_var),
-            ),
+                ty1.map_vars_walk(cutoff, on_var)?,
+                ty2.map_vars_walk(cutoff + 1, on_var)?,
+            )),
+            Self::Arr(t1, t2) => Ok(Self::arr(
+                t1.map_vars_walk(cutoff, on_var)?,
+                t2.map_vars_walk(cutoff, on_var)?,
+            )),
         }
     }
 
-    fn map_vars(&self, cutoff: usize, on_var: impl FnMut(usize, usize) -> Rc<Self>) -> Rc<Self> {
+    fn map_vars(
+        &self,
+        cutoff: usize,
+        on_var: impl FnMut(usize, usize) -> Result<Rc<Self>>,
+    ) -> Result<Rc<Self>> {
         let mut on_var = on_var;
         self.map_vars_walk(cutoff, &mut on_var)
     }
 
-    fn shift_above(&self, d: isize, cutoff: usize) -> Rc<Self> {
+    fn shift_above(&self, d: isize, cutoff: usize) -> Result<Rc<Self>> {
         self.map_vars(cutoff, |c, x| {
             if x >= c {
-                // TODO: This assertion is not true for all cases.
-                // So we should return an error instead of panicking.
-                // But this will change the return type of this function and
-                // many other functions that call it.
-                // This will require a lot of changes, so I will leave it as is for now.
-                // See chapter 25.5 in the book Types and Programming Languages.
-                assert!(x as isize + d >= 0);
-                Self::var((x as isize + d) as usize)
+                if x as isize + d < 0 {
+                    return Err(Error::ScopingError);
+                }
+                Ok(Self::var((x as isize + d) as usize))
             } else {
-                Self::var(x)
+                Ok(Self::var(x))
             }
         })
     }
 
-    pub fn shift(&self, d: isize) -> Rc<Self> {
+    pub fn shift(&self, d: isize) -> Result<Rc<Self>> {
         self.shift_above(d, 0)
     }
 
-    fn subst(&self, j: usize, s: &Self) -> Rc<Self> {
+    fn subst(&self, j: usize, s: &Self) -> Result<Rc<Self>> {
         self.map_vars(j, |c, x| {
             if x == c {
-                s.shift(c as isize)
+                s.shift(c as isize)?.as_ref().shift(0)
             } else {
-                Self::var(x)
+                Ok(Self::var(x))
             }
         })
     }
 
-    pub fn subst_top(&self, s: &Self) -> Rc<Self> {
-        self.subst(0, &s.shift(1)).shift(-1)
+    pub fn subst_top(&self, s: &Self) -> Result<Rc<Self>> {
+        self.subst(0, s.shift(1)?.as_ref())?.shift(-1)
     }
 }
 
@@ -192,91 +195,93 @@ impl DeBruijnTerm {
     fn map_vars_walk(
         &self,
         cutoff: usize,
-        on_var: &mut impl FnMut(usize, usize) -> Rc<Self>,
-        on_type: &mut impl FnMut(usize, &Rc<DeBruijnTy>) -> Rc<DeBruijnTy>,
-    ) -> Rc<Self> {
+        on_var: &mut impl FnMut(usize, usize) -> Result<Rc<Self>>,
+        on_type: &mut impl FnMut(usize, &Rc<DeBruijnTy>) -> Result<Rc<DeBruijnTy>>,
+    ) -> Result<Rc<Self>> {
         match self {
             Self::Var(x) => on_var(cutoff, *x),
-            Self::Abs(x, ty, t) => Self::abs(
+            Self::Abs(x, ty, t) => Ok(Self::abs(
                 x.clone(),
-                on_type(cutoff, ty),
-                t.map_vars_walk(cutoff + 1, on_var, on_type),
-            ),
-            Self::App(t1, t2) => Self::app(
-                t1.map_vars_walk(cutoff, on_var, on_type),
-                t2.map_vars_walk(cutoff, on_var, on_type),
-            ),
-            Self::TAbs(x, ty, t) => Self::t_abs(
+                on_type(cutoff, ty)?,
+                t.map_vars_walk(cutoff + 1, on_var, on_type)?,
+            )),
+            Self::App(t1, t2) => Ok(Self::app(
+                t1.map_vars_walk(cutoff, on_var, on_type)?,
+                t2.map_vars_walk(cutoff, on_var, on_type)?,
+            )),
+            Self::TAbs(x, ty, t) => Ok(Self::t_abs(
                 x.clone(),
-                on_type(cutoff, ty),
-                t.map_vars_walk(cutoff + 1, on_var, on_type),
-            ),
-            Self::TApp(t, ty) => Self::t_app(
-                t.map_vars_walk(cutoff, on_var, on_type),
-                on_type(cutoff, ty),
-            ),
+                on_type(cutoff, ty)?,
+                t.map_vars_walk(cutoff + 1, on_var, on_type)?,
+            )),
+            Self::TApp(t, ty) => Ok(Self::t_app(
+                t.map_vars_walk(cutoff, on_var, on_type)?,
+                on_type(cutoff, ty)?,
+            )),
         }
     }
 
     fn map_vars(
         &self,
         cutoff: usize,
-        on_var: impl FnMut(usize, usize) -> Rc<Self>,
-        on_type: impl FnMut(usize, &Rc<DeBruijnTy>) -> Rc<DeBruijnTy>,
-    ) -> Rc<Self> {
+        on_var: impl FnMut(usize, usize) -> Result<Rc<Self>>,
+        on_type: impl FnMut(usize, &Rc<DeBruijnTy>) -> Result<Rc<DeBruijnTy>>,
+    ) -> Result<Rc<Self>> {
         let mut on_var = on_var;
         let mut on_type = on_type;
         self.map_vars_walk(cutoff, &mut on_var, &mut on_type)
     }
 
-    pub fn shift(&self, d: isize) -> Rc<Self> {
+    pub fn shift(&self, d: isize) -> Result<Rc<Self>> {
         self.map_vars(
             0,
             |c, x| {
                 if x >= c {
-                    assert!(x as isize + d >= 0);
-                    Self::var((x as isize + d) as usize)
+                    if x as isize + d < 0 {
+                        return Err(Error::ScopingError);
+                    }
+                    Ok(Self::var((x as isize + d) as usize))
                 } else {
-                    Self::var(x)
+                    Ok(Self::var(x))
                 }
             },
             |c, ty| ty.shift_above(d, c),
         )
     }
 
-    fn subst(&self, j: usize, s: &Self) -> Rc<Self> {
+    fn subst(&self, j: usize, s: &Self) -> Result<Rc<Self>> {
         self.map_vars(
             j,
             |c, x| {
                 if x == c {
-                    s.shift(c as isize)
+                    s.shift(c as isize)?.as_ref().shift(0)
                 } else {
-                    Self::var(x)
+                    Ok(Self::var(x))
                 }
             },
-            |_, ty| ty.clone(),
+            |_, ty| Ok(ty.clone()),
         )
     }
 
-    pub fn subst_top(&self, s: &Self) -> Rc<Self> {
-        self.subst(0, &s.shift(1)).shift(-1)
+    pub fn subst_top(&self, s: &Self) -> Result<Rc<Self>> {
+        self.subst(0, s.shift(1)?.as_ref())?.shift(-1)
     }
 
-    fn subst_ty(&self, j: usize, ty: &DeBruijnTy) -> Rc<Self> {
-        self.map_vars(j, |_, x| Self::var(x), |c, ty_| ty_.subst(c, ty))
+    fn subst_ty(&self, j: usize, ty: &DeBruijnTy) -> Result<Rc<Self>> {
+        self.map_vars(j, |_, x| Ok(Self::var(x)), |c, ty_| ty_.subst(c, ty))
     }
 
-    pub fn subst_top_ty(&self, ty: &DeBruijnTy) -> Rc<Self> {
-        self.subst_ty(0, &ty.shift(1)).shift(-1)
+    pub fn subst_top_ty(&self, ty: &DeBruijnTy) -> Result<Rc<Self>> {
+        self.subst_ty(0, ty.shift(1)?.as_ref())?.shift(-1)
     }
 }
 
 impl BindingShift for DeBruijnBinding {
-    fn shift(&self, d: isize) -> Self {
+    fn shift(&self, d: isize) -> Result<Self> {
         match self {
-            Self::Name => Self::Name,
-            Self::Var(ty) => Self::Var(ty.shift(d)),
-            Self::TyVar(ty) => Self::TyVar(ty.shift(d)),
+            Self::Name => Ok(Self::Name),
+            Self::Var(ty) => Ok(Self::Var(ty.shift(d)?)),
+            Self::TyVar(ty) => Ok(Self::TyVar(ty.shift(d)?)),
         }
     }
 }

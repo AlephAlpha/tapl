@@ -2,7 +2,10 @@ use std::{
     fmt::{self, Display, Formatter},
     rc::Rc,
 };
-use util::{error::Result, BindingShift, RcTerm};
+use util::{
+    error::{Error, Result},
+    BindingShift, RcTerm,
+};
 
 pub const KEYWORDS: &[&str] = &[
     "unit",
@@ -280,47 +283,53 @@ impl DeBruijnTy {
     fn map_vars_walk(
         &self,
         cutoff: usize,
-        on_var: &mut impl FnMut(usize, usize) -> Rc<Self>,
-    ) -> Rc<Self> {
+        on_var: &mut impl FnMut(usize, usize) -> Result<Rc<Self>>,
+    ) -> Result<Rc<Self>> {
         match self {
-            Self::Arr(ty1, ty2) => Self::arr(
-                ty1.map_vars_walk(cutoff, on_var),
-                ty2.map_vars_walk(cutoff, on_var),
-            ),
-            Self::Top => Self::top(),
-            Self::String => Self::string(),
-            Self::Id(s) => Self::id(s.clone()),
-            Self::Record(fields) => Self::record(
+            Self::Arr(ty1, ty2) => Ok(Self::arr(
+                ty1.map_vars_walk(cutoff, on_var)?,
+                ty2.map_vars_walk(cutoff, on_var)?,
+            )),
+            Self::Top => Ok(Self::top()),
+            Self::String => Ok(Self::string()),
+            Self::Id(s) => Ok(Self::id(s.clone())),
+            Self::Record(fields) => Ok(Self::record(
                 fields
                     .iter()
-                    .map(|(label, ty)| (label.clone(), ty.map_vars_walk(cutoff, on_var)))
-                    .collect::<Vec<_>>(),
-            ),
-            Self::Bool => Self::bool(),
-            Self::Float => Self::float(),
-            Self::Unit => Self::unit(),
+                    .map(|(label, ty)| Ok((label.clone(), ty.map_vars_walk(cutoff, on_var)?)))
+                    .collect::<Result<Vec<_>>>()?,
+            )),
+            Self::Bool => Ok(Self::bool()),
+            Self::Float => Ok(Self::float()),
+            Self::Unit => Ok(Self::unit()),
             Self::Var(x) => on_var(cutoff, *x),
-            Self::Nat => Self::nat(),
+            Self::Nat => Ok(Self::nat()),
         }
     }
 
-    fn map_vars(&self, cutoff: usize, on_var: impl FnMut(usize, usize) -> Rc<Self>) -> Rc<Self> {
+    fn map_vars(
+        &self,
+        cutoff: usize,
+        on_var: impl FnMut(usize, usize) -> Result<Rc<Self>>,
+    ) -> Result<Rc<Self>> {
         let mut on_var = on_var;
         self.map_vars_walk(cutoff, &mut on_var)
     }
 
-    fn shift_above(&self, d: isize, cutoff: usize) -> Rc<Self> {
+    fn shift_above(&self, d: isize, cutoff: usize) -> Result<Rc<Self>> {
         self.map_vars(cutoff, |c, x| {
             if x >= c {
-                assert!(x as isize + d >= 0);
-                Self::var((x as isize + d) as usize)
+                if x as isize + d < 0 {
+                    return Err(Error::ScopingError);
+                }
+                Ok(Self::var((x as isize + d) as usize))
             } else {
-                Self::var(x)
+                Ok(Self::var(x))
             }
         })
     }
 
-    pub fn shift(&self, d: isize) -> Rc<Self> {
+    pub fn shift(&self, d: isize) -> Result<Rc<Self>> {
         self.shift_above(d, 0)
     }
 }
@@ -329,114 +338,122 @@ impl DeBruijnTerm {
     fn map_vars_walk(
         &self,
         cutoff: usize,
-        on_var: &mut impl FnMut(usize, usize) -> Rc<Self>,
-        on_type: &mut impl FnMut(usize, &Rc<DeBruijnTy>) -> Rc<DeBruijnTy>,
-    ) -> Rc<Self> {
+        on_var: &mut impl FnMut(usize, usize) -> Result<Rc<Self>>,
+        on_type: &mut impl FnMut(usize, &Rc<DeBruijnTy>) -> Result<Rc<DeBruijnTy>>,
+    ) -> Result<Rc<Self>> {
         match self {
             Self::Var(x) => on_var(cutoff, *x),
-            Self::Abs(x, ty, t) => Self::abs(
+            Self::Abs(x, ty, t) => Ok(Self::abs(
                 x.clone(),
-                on_type(cutoff, ty),
-                t.map_vars_walk(cutoff + 1, on_var, on_type),
-            ),
-            Self::App(t1, t2) => Self::app(
-                t1.map_vars_walk(cutoff, on_var, on_type),
-                t2.map_vars_walk(cutoff, on_var, on_type),
-            ),
-            Self::Ascribe(t, ty) => Self::ascribe(
-                t.map_vars_walk(cutoff, on_var, on_type),
-                on_type(cutoff, ty),
-            ),
-            Self::String(s) => Self::string(s.clone()),
-            Self::Unit => Self::unit(),
-            Self::Let(x, t1, t2) => Self::let_(
+                on_type(cutoff, ty)?,
+                t.map_vars_walk(cutoff + 1, on_var, on_type)?,
+            )),
+            Self::App(t1, t2) => Ok(Self::app(
+                t1.map_vars_walk(cutoff, on_var, on_type)?,
+                t2.map_vars_walk(cutoff, on_var, on_type)?,
+            )),
+            Self::Ascribe(t, ty) => Ok(Self::ascribe(
+                t.map_vars_walk(cutoff, on_var, on_type)?,
+                on_type(cutoff, ty)?,
+            )),
+            Self::String(s) => Ok(Self::string(s.clone())),
+            Self::Unit => Ok(Self::unit()),
+            Self::Let(x, t1, t2) => Ok(Self::let_(
                 x.clone(),
-                t1.map_vars_walk(cutoff, on_var, on_type),
-                t2.map_vars_walk(cutoff + 1, on_var, on_type),
-            ),
-            Self::Fix(t) => Self::fix(t.map_vars_walk(cutoff, on_var, on_type)),
-            Self::Float(x) => Self::float(*x),
-            Self::TimesFloat(t1, t2) => Self::times_float(
-                t1.map_vars_walk(cutoff, on_var, on_type),
-                t2.map_vars_walk(cutoff, on_var, on_type),
-            ),
-            Self::True => Self::true_(),
-            Self::False => Self::false_(),
-            Self::If(t1, t2, t3) => Self::if_(
-                t1.map_vars_walk(cutoff, on_var, on_type),
-                t2.map_vars_walk(cutoff, on_var, on_type),
-                t3.map_vars_walk(cutoff, on_var, on_type),
-            ),
-            Self::Proj(t, l) => Self::proj(t.map_vars_walk(cutoff, on_var, on_type), l.clone()),
-            Self::Record(fields) => Self::record(
+                t1.map_vars_walk(cutoff, on_var, on_type)?,
+                t2.map_vars_walk(cutoff + 1, on_var, on_type)?,
+            )),
+            Self::Fix(t) => Ok(Self::fix(t.map_vars_walk(cutoff, on_var, on_type)?)),
+            Self::Float(x) => Ok(Self::float(*x)),
+            Self::TimesFloat(t1, t2) => Ok(Self::times_float(
+                t1.map_vars_walk(cutoff, on_var, on_type)?,
+                t2.map_vars_walk(cutoff, on_var, on_type)?,
+            )),
+            Self::True => Ok(Self::true_()),
+            Self::False => Ok(Self::false_()),
+            Self::If(t1, t2, t3) => Ok(Self::if_(
+                t1.map_vars_walk(cutoff, on_var, on_type)?,
+                t2.map_vars_walk(cutoff, on_var, on_type)?,
+                t3.map_vars_walk(cutoff, on_var, on_type)?,
+            )),
+            Self::Proj(t, l) => Ok(Self::proj(
+                t.map_vars_walk(cutoff, on_var, on_type)?,
+                l.clone(),
+            )),
+            Self::Record(fields) => Ok(Self::record(
                 fields
                     .iter()
                     .map(|(label, term)| {
-                        (label.clone(), term.map_vars_walk(cutoff, on_var, on_type))
+                        Ok((label.clone(), term.map_vars_walk(cutoff, on_var, on_type)?))
                     })
-                    .collect::<Vec<_>>(),
-            ),
-            Self::Zero => Self::zero(),
-            Self::Succ(t) => Self::succ(t.map_vars_walk(cutoff, on_var, on_type)),
-            Self::Pred(t) => Self::pred(t.map_vars_walk(cutoff, on_var, on_type)),
-            Self::IsZero(t) => Self::is_zero(t.map_vars_walk(cutoff, on_var, on_type)),
-            Self::Inert(ty) => Self::inert(on_type(cutoff, ty)),
+                    .collect::<Result<Vec<_>>>()?,
+            )),
+            Self::Zero => Ok(Self::zero()),
+            Self::Succ(t) => Ok(Self::succ(t.map_vars_walk(cutoff, on_var, on_type)?)),
+            Self::Pred(t) => Ok(Self::pred(t.map_vars_walk(cutoff, on_var, on_type)?)),
+            Self::IsZero(t) => Ok(Self::is_zero(t.map_vars_walk(cutoff, on_var, on_type)?)),
+            Self::Inert(ty) => Ok(Self::inert(on_type(cutoff, ty)?)),
         }
     }
 
     fn map_vars(
         &self,
         cutoff: usize,
-        on_var: impl FnMut(usize, usize) -> Rc<Self>,
-        on_type: impl FnMut(usize, &Rc<DeBruijnTy>) -> Rc<DeBruijnTy>,
-    ) -> Rc<Self> {
+        on_var: impl FnMut(usize, usize) -> Result<Rc<Self>>,
+        on_type: impl FnMut(usize, &Rc<DeBruijnTy>) -> Result<Rc<DeBruijnTy>>,
+    ) -> Result<Rc<Self>> {
         let mut on_var = on_var;
         let mut on_type = on_type;
         self.map_vars_walk(cutoff, &mut on_var, &mut on_type)
     }
 
-    pub fn shift(&self, d: isize) -> Rc<Self> {
+    pub fn shift(&self, d: isize) -> Result<Rc<Self>> {
         self.map_vars(
             0,
             |c, x| {
                 if x >= c {
-                    assert!(x as isize + d >= 0);
-                    Self::var((x as isize + d) as usize)
+                    if x as isize + d < 0 {
+                        return Err(Error::ScopingError);
+                    }
+                    Ok(Self::var((x as isize + d) as usize))
                 } else {
-                    Self::var(x)
+                    Ok(Self::var(x))
                 }
             },
             |c, ty| ty.shift_above(d, c),
         )
     }
 
-    fn subst(&self, j: usize, s: &Self) -> Rc<Self> {
+    fn subst(&self, j: usize, s: &Self) -> Result<Rc<Self>> {
         self.map_vars(
             0,
             |c, x| {
                 if x == j + c {
                     s.shift(c as isize)
                 } else {
-                    Self::var(x)
+                    Ok(Self::var(x))
                 }
             },
-            |_, ty| ty.clone(),
+            |_, ty| Ok(ty.clone()),
         )
     }
 
-    pub fn subst_top(&self, s: &Self) -> Rc<Self> {
-        self.subst(0, &s.shift(1)).shift(-1)
+    pub fn subst_top(&self, s: &Self) -> Result<Rc<Self>> {
+        self.subst(0, s.shift(1)?.as_ref())?.shift(-1)
     }
 }
 
 impl BindingShift for DeBruijnBinding {
-    fn shift(&self, d: isize) -> Self {
+    fn shift(&self, d: isize) -> Result<Self> {
         match self {
-            Self::Name => Self::Name,
-            Self::TermAbb(t, ty) => Self::TermAbb(t.shift(d), ty.as_ref().map(|ty| ty.shift(d))),
-            Self::Var(ty) => Self::Var(ty.shift(d)),
-            Self::TyVar => Self::TyVar,
-            Self::TyAbb(ty) => Self::TyAbb(ty.shift(d)),
+            Self::Name => Ok(Self::Name),
+            Self::TermAbb(t, ty) => Ok(Self::TermAbb(
+                t.shift(d)?,
+                ty.as_ref().map(|ty| ty.shift(d)).transpose()?,
+            )),
+            Self::Var(ty) => Ok(Self::Var(ty.shift(d)?)),
+            Self::TyVar => Ok(Self::TyVar),
+            Self::TyAbb(ty) => Ok(Self::TyAbb(ty.shift(d)?)),
         }
     }
 }

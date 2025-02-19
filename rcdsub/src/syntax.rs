@@ -2,7 +2,10 @@ use std::{
     fmt::{self, Display, Formatter},
     rc::Rc,
 };
-use util::{error::Result, RcTerm};
+use util::{
+    error::{Error, Result},
+    RcTerm,
+};
 
 pub const KEYWORDS: &[&str] = &["lambda", "_", "Bot", "Top"];
 pub const COMMANDS: &[&str] = &["eval", "eval1", "bind", "type"];
@@ -142,55 +145,63 @@ impl DeBruijnTerm {
     fn map_vars_walk(
         &self,
         cutoff: usize,
-        on_var: &mut impl FnMut(usize, usize) -> Rc<Self>,
-    ) -> Rc<Self> {
+        on_var: &mut impl FnMut(usize, usize) -> Result<Rc<Self>>,
+    ) -> Result<Rc<Self>> {
         match self {
             Self::Var(x) => on_var(cutoff, *x),
-            Self::Abs(x, ty, t) => {
-                Self::abs(x.clone(), ty.clone(), t.map_vars_walk(cutoff + 1, on_var))
-            }
-            Self::App(t1, t2) => Self::app(
-                t1.map_vars_walk(cutoff, on_var),
-                t2.map_vars_walk(cutoff, on_var),
-            ),
-            Self::Proj(t, l) => Self::proj(t.map_vars_walk(cutoff, on_var), l.clone()),
-            Self::Record(fields) => Self::record(
+            Self::Abs(x, ty, t) => Ok(Self::abs(
+                x.clone(),
+                ty.clone(),
+                t.map_vars_walk(cutoff + 1, on_var)?,
+            )),
+            Self::App(t1, t2) => Ok(Self::app(
+                t1.map_vars_walk(cutoff, on_var)?,
+                t2.map_vars_walk(cutoff, on_var)?,
+            )),
+            Self::Proj(t, l) => Ok(Self::proj(t.map_vars_walk(cutoff, on_var)?, l.clone())),
+            Self::Record(fields) => Ok(Self::record(
                 fields
                     .iter()
-                    .map(|(label, term)| (label.clone(), term.map_vars_walk(cutoff, on_var)))
-                    .collect::<Vec<_>>(),
-            ),
+                    .map(|(label, term)| Ok((label.clone(), term.map_vars_walk(cutoff, on_var)?)))
+                    .collect::<Result<Vec<_>>>()?,
+            )),
         }
     }
 
-    fn map_vars(&self, cutoff: usize, on_var: impl FnMut(usize, usize) -> Rc<Self>) -> Rc<Self> {
+    fn map_vars(
+        &self,
+        cutoff: usize,
+        on_var: impl FnMut(usize, usize) -> Result<Rc<Self>>,
+    ) -> Result<Rc<Self>> {
         let mut on_var = on_var;
         self.map_vars_walk(cutoff, &mut on_var)
     }
 
-    pub fn shift(&self, d: isize) -> Rc<Self> {
+    pub fn shift(&self, d: isize) -> Result<Rc<Self>> {
         self.map_vars(0, |c, x| {
             if x >= c {
-                assert!(x as isize + d >= 0);
-                Self::var((x as isize + d) as usize)
+                if x as isize + d < 0 {
+                    return Err(Error::ScopingError);
+                }
+                Ok(Self::var((x as isize + d) as usize))
             } else {
-                Self::var(x)
+                Ok(Self::var(x))
             }
         })
     }
 
-    fn subst(&self, j: usize, s: &Self) -> Rc<Self> {
+    fn subst(&self, j: usize, s: &Self) -> Result<Rc<Self>> {
         self.map_vars(0, |c, x| {
             if x == j + c {
                 s.shift(c as isize)
             } else {
-                Self::var(x)
+                Ok(Self::var(x))
             }
         })
     }
 
-    pub fn subst_top(&self, s: &Self) -> Rc<Self> {
-        self.subst(0, &s.shift(1)).shift(-1)
+    pub fn subst_top(&self, s: &Self) -> Result<Rc<Self>> {
+        self.subst(0, s.shift(1)?.as_ref())?.shift(-1)
     }
 }
 

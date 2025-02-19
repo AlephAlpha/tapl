@@ -2,7 +2,10 @@ use std::{
     fmt::{self, Display, Formatter},
     rc::Rc,
 };
-use util::{error::Result, BindingShift, RcTerm};
+use util::{
+    error::{Error, Result},
+    BindingShift, RcTerm,
+};
 
 pub const KEYWORDS: &[&str] = &[
     "true",
@@ -182,81 +185,87 @@ impl DeBruijnTerm {
     fn map_vars_walk(
         &self,
         cutoff: usize,
-        f: &mut impl FnMut(usize, usize) -> Rc<Self>,
-    ) -> Rc<Self> {
-        match self {
+        f: &mut impl FnMut(usize, usize) -> Result<Rc<Self>>,
+    ) -> Result<Rc<Self>> {
+        Ok(match self {
             Self::String(s) => Self::string(s.clone()),
-            Self::Var(x) => f(cutoff, *x),
+            Self::Var(x) => f(cutoff, *x)?,
             Self::True => Self::true_(),
             Self::False => Self::false_(),
             Self::If(t1, t2, t3) => Self::if_(
-                t1.map_vars_walk(cutoff, f),
-                t2.map_vars_walk(cutoff, f),
-                t3.map_vars_walk(cutoff, f),
+                t1.map_vars_walk(cutoff, f)?,
+                t2.map_vars_walk(cutoff, f)?,
+                t3.map_vars_walk(cutoff, f)?,
             ),
             Self::Let(x, t1, t2) => Self::let_(
                 x.clone(),
-                t1.map_vars_walk(cutoff, f),
-                t2.map_vars_walk(cutoff + 1, f),
+                t1.map_vars_walk(cutoff, f)?,
+                t2.map_vars_walk(cutoff + 1, f)?,
             ),
             Self::Record(fields) => Self::record(
                 fields
                     .iter()
-                    .map(|(label, term)| (label.clone(), term.map_vars_walk(cutoff, f)))
-                    .collect::<Vec<_>>(),
+                    .map(|(label, term)| Ok((label.clone(), term.map_vars_walk(cutoff, f)?)))
+                    .collect::<Result<Vec<_>>>()?,
             ),
-            Self::Proj(t, l) => Self::proj(t.map_vars_walk(cutoff, f), l.clone()),
-            Self::Abs(x, t) => Self::abs(x.clone(), t.map_vars_walk(cutoff + 1, f)),
+            Self::Proj(t, l) => Self::proj(t.map_vars_walk(cutoff, f)?, l.clone()),
+            Self::Abs(x, t) => Self::abs(x.clone(), t.map_vars_walk(cutoff + 1, f)?),
             Self::App(t1, t2) => {
-                Self::app(t1.map_vars_walk(cutoff, f), t2.map_vars_walk(cutoff, f))
+                Self::app(t1.map_vars_walk(cutoff, f)?, t2.map_vars_walk(cutoff, f)?)
             }
             Self::Zero => Self::zero(),
-            Self::Succ(t) => Self::succ(t.map_vars_walk(cutoff, f)),
-            Self::Pred(t) => Self::pred(t.map_vars_walk(cutoff, f)),
-            Self::IsZero(t) => Self::is_zero(t.map_vars_walk(cutoff, f)),
+            Self::Succ(t) => Self::succ(t.map_vars_walk(cutoff, f)?),
+            Self::Pred(t) => Self::pred(t.map_vars_walk(cutoff, f)?),
+            Self::IsZero(t) => Self::is_zero(t.map_vars_walk(cutoff, f)?),
             Self::Float(x) => Self::float(*x),
             Self::TimesFloat(t1, t2) => {
-                Self::times_float(t1.map_vars_walk(cutoff, f), t2.map_vars_walk(cutoff, f))
+                Self::times_float(t1.map_vars_walk(cutoff, f)?, t2.map_vars_walk(cutoff, f)?)
             }
-        }
+        })
     }
 
-    fn map_vars(&self, cutoff: usize, f: impl FnMut(usize, usize) -> Rc<Self>) -> Rc<Self> {
+    fn map_vars(
+        &self,
+        cutoff: usize,
+        f: impl FnMut(usize, usize) -> Result<Rc<Self>>,
+    ) -> Result<Rc<Self>> {
         let mut f = f;
         self.map_vars_walk(cutoff, &mut f)
     }
 
-    pub fn shift(&self, d: isize) -> Rc<Self> {
+    pub fn shift(&self, d: isize) -> Result<Rc<Self>> {
         self.map_vars(0, |c, x| {
             if x >= c {
-                assert!(x as isize + d >= 0);
-                Self::var((x as isize + d) as usize)
+                if x as isize + d < 0 {
+                    return Err(Error::ScopingError);
+                }
+                Ok(Self::var((x as isize + d) as usize))
             } else {
-                Self::var(x)
+                Ok(Self::var(x))
             }
         })
     }
 
-    fn subst(&self, j: usize, s: &Self) -> Rc<Self> {
+    fn subst(&self, j: usize, s: &Self) -> Result<Rc<Self>> {
         self.map_vars(0, |c, x| {
             if x == j + c {
                 s.shift(c as isize)
             } else {
-                Self::var(x)
+                Ok(Self::var(x))
             }
         })
     }
 
-    pub fn subst_top(&self, s: &Self) -> Rc<Self> {
-        self.subst(0, &s.shift(1)).shift(-1)
+    pub fn subst_top(&self, s: &Self) -> Result<Rc<Self>> {
+        self.subst(0, s.shift(1)?.as_ref())?.shift(-1)
     }
 }
 
 impl BindingShift for DeBruijnBinding {
-    fn shift(&self, d: isize) -> Self {
+    fn shift(&self, d: isize) -> Result<Self> {
         match self {
-            Self::Name => Self::Name,
-            Self::TermAbb(t) => Self::TermAbb(t.shift(d)),
+            Self::Name => Ok(Self::Name),
+            Self::TermAbb(t) => Ok(Self::TermAbb(t.shift(d)?)),
         }
     }
 }

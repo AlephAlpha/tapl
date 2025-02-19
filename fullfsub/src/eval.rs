@@ -238,7 +238,7 @@ impl DeBruijnTerm {
             }
             Self::Unpack(x1, x2, t1, t2) => match t1.as_ref() {
                 Self::Pack(ty11, t12, _) if t12.is_val(ctx) => {
-                    Ok(t2.subst_top(&t12.shift(1)).subst_top_ty(ty11))
+                    t2.subst_top(t12.shift(1)?.as_ref())?.subst_top_ty(ty11)
                 }
                 _ => Ok(Self::unpack(
                     x1.clone(),
@@ -249,7 +249,7 @@ impl DeBruijnTerm {
             },
             Self::Pack(ty1, t2, ty3) => Ok(Self::pack(ty1.clone(), t2.eval1(ctx)?, ty3.clone())),
             Self::App(t1, t2) => match t1.as_ref() {
-                Self::Abs(_, _, t) if t2.is_val(ctx) => Ok(t.subst_top(t2)),
+                Self::Abs(_, _, t) if t2.is_val(ctx) => t.subst_top(t2),
                 _ => {
                     if t1.is_val(ctx) {
                         Ok(Self::app(t1.clone(), t2.eval1(ctx)?))
@@ -259,7 +259,7 @@ impl DeBruijnTerm {
                 }
             },
             Self::TApp(t, ty) => match t.as_ref() {
-                Self::TAbs(_, _, t) => Ok(t.subst_top_ty(ty)),
+                Self::TAbs(_, _, t) => t.subst_top_ty(ty),
                 _ => Ok(Self::t_app(t.eval1(ctx)?, ty.clone())),
             },
             Self::Record(fields) => {
@@ -310,13 +310,13 @@ impl DeBruijnTerm {
             },
             Self::Let(x, t1, t2) => {
                 if t1.is_val(ctx) {
-                    Ok(t2.subst_top(t1))
+                    t2.subst_top(t1)
                 } else {
                     Ok(Self::let_(x.clone(), t1.eval1(ctx)?, t2.clone()))
                 }
             }
             Self::Fix(t) => match t.as_ref() {
-                Self::Abs(_, _, t1) => Ok(t1.subst_top(&Self::fix(t.clone()))),
+                Self::Abs(_, _, t1) => t1.subst_top(&Self::fix(t.clone())),
                 t if t.is_val(ctx) => Err(Error::NoRuleApplies),
                 _ => Ok(Self::fix(t.eval1(ctx)?)),
             },
@@ -352,7 +352,7 @@ impl DeBruijnTerm {
             Self::TApp(t, ty) => match t.type_of(ctx)?.lcst(ctx).as_ref() {
                 Ty::All(_, ty1, ty2) => {
                     if ty.subtype(ty1, ctx) {
-                        Ok(ty2.subst_top(ty))
+                        ty2.subst_top(ty)
                     } else {
                         Err(Error::TypeError("type parameter type mismatch".to_string()))
                     }
@@ -362,7 +362,7 @@ impl DeBruijnTerm {
             Self::Pack(ty1, t2, ty3) => match ty3.simplify(ctx).as_ref() {
                 Ty::Some(_, ty1_, ty2_) => {
                     if ty1.subtype(ty1_, ctx) {
-                        if t2.type_of(ctx)?.subtype(&ty2_.subst_top(ty1), ctx) {
+                        if t2.type_of(ctx)?.subtype(ty2_.subst_top(ty1)?.as_ref(), ctx) {
                             Ok(ty3.clone())
                         } else {
                             Err(Error::TypeError(
@@ -385,7 +385,7 @@ impl DeBruijnTerm {
                     // See chapter 28.7 in the book Types and Programming Languages.
                     ctx.with_binding(x1.clone(), Binding::TyVar(ty1.clone()), |ctx| {
                         ctx.with_binding(x2.clone(), Binding::Var(ty2.clone()), |ctx| {
-                            Ok(t2.type_of(ctx)?.shift(-2))
+                            t2.type_of(ctx)?.shift(-2)
                         })
                     })
                 }
@@ -401,7 +401,7 @@ impl DeBruijnTerm {
             },
             Self::Abs(x, ty1, t2) => {
                 ctx.with_binding(x.clone(), Binding::Var(ty1.clone()), |ctx| {
-                    Ok(Ty::arr(ty1.clone(), t2.type_of(ctx)?.shift(-1)))
+                    Ok(Ty::arr(ty1.clone(), t2.type_of(ctx)?.shift(-1)?))
                 })
             }
             Self::App(t1, t2) => match t1.type_of(ctx)?.lcst(ctx).as_ref() {
@@ -483,7 +483,7 @@ impl DeBruijnTerm {
             Self::Let(x, t1, t2) => {
                 let ty1 = t1.type_of(ctx)?;
                 ctx.with_binding(x.clone(), Binding::Var(ty1), |ctx| {
-                    Ok(t2.type_of(ctx)?.shift(-1))
+                    t2.type_of(ctx)?.shift(-1)
                 })
             }
             Self::Inert(ty) => Ok(ty.clone()),

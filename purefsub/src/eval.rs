@@ -52,7 +52,7 @@ impl DeBruijnTerm {
     pub fn eval1(&self, ctx: &Context) -> Result<Rc<Self>> {
         match self {
             Self::App(t1, t2) => match t1.as_ref() {
-                Self::Abs(_, _, t) if t2.is_val(ctx) => Ok(t.subst_top(t2)),
+                Self::Abs(_, _, t) if t2.is_val(ctx) => t.subst_top(t2),
                 _ => {
                     if t1.is_val(ctx) {
                         Ok(Self::app(t1.clone(), t2.eval1(ctx)?))
@@ -62,7 +62,7 @@ impl DeBruijnTerm {
                 }
             },
             Self::TApp(t, ty) => match t.as_ref() {
-                Self::TAbs(_, _, t) => Ok(t.subst_top_ty(ty)),
+                Self::TAbs(_, _, t) => t.subst_top_ty(ty),
                 _ => Ok(Self::t_app(t.eval1(ctx)?, ty.clone())),
             },
             _ => Err(Error::NoRuleApplies),
@@ -88,7 +88,7 @@ impl DeBruijnTerm {
             },
             Self::Abs(x, ty1, t2) => {
                 ctx.with_binding(x.clone(), Binding::Var(ty1.clone()), |ctx| {
-                    Ok(Ty::arr(ty1.clone(), t2.type_of(ctx)?.shift(-1)))
+                    Ok(Ty::arr(ty1.clone(), t2.type_of(ctx)?.shift(-1)?))
                 })
             }
             Self::App(t1, t2) => match t1.type_of(ctx)?.lcst(ctx).as_ref() {
@@ -109,7 +109,7 @@ impl DeBruijnTerm {
             Self::TApp(t, ty) => match t.type_of(ctx)?.lcst(ctx).as_ref() {
                 Ty::All(_, ty1, ty2) => {
                     if ty.subtype(ty1, ctx) {
-                        Ok(ty2.subst_top(ty))
+                        ty2.subst_top(ty)
                     } else {
                         Err(Error::TypeError("type parameter type mismatch".to_string()))
                     }

@@ -28,7 +28,7 @@ impl DeBruijnTerm {
             },
             Self::Let(x, t1, t2) => {
                 if t1.is_val(ctx) {
-                    Ok(t2.subst_top(t1))
+                    t2.subst_top(t1)
                 } else {
                     Ok(Self::let_(x.clone(), t1.eval1(ctx)?, t2.clone()))
                 }
@@ -53,7 +53,7 @@ impl DeBruijnTerm {
                 _ => Ok(Self::proj(t.eval1(ctx)?, l.clone())),
             },
             Self::App(t1, t2) => match t1.as_ref() {
-                Self::Abs(_, t) if t2.is_val(ctx) => Ok(t.subst_top(t2)),
+                Self::Abs(_, t) if t2.is_val(ctx) => t.subst_top(t2),
                 _ => {
                     if t1.is_val(ctx) {
                         Ok(Self::app(t1.clone(), t2.eval1(ctx)?))

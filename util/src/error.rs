@@ -11,6 +11,8 @@ pub enum Error {
     NoRuleApplies,
     #[error("Type of binding does not match declared type")]
     TypeMismatch,
+    #[error("Scoping error")]
+    ScopingError,
     #[error("{0}")]
     TypeError(String),
     #[error("{0}")]

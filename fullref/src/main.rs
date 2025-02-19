@@ -47,7 +47,7 @@ fn main() -> Result<()> {
                                 match b.to_de_bruijn(&mut ctx).and_then(|b_| b_.check(&mut ctx)) {
                                     Ok(b_) => {
                                         ctx.add_binding(&x, b_.eval(&ctx, &mut store));
-                                        store.shift(1);
+                                        store.shift(1).unwrap();
                                         rl.helper_mut().unwrap().add_keyword(x);
                                     }
                                     Err(err) => eprintln!("Binding error: {err}"),

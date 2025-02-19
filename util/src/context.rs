@@ -102,10 +102,10 @@ impl<T> Context<T> {
     where
         T: BindingShift,
     {
-        self.get_binding(i).map(|b| b.shift(i as isize + 1))
+        self.get_binding(i).and_then(|b| b.shift(i as isize + 1))
     }
 }
 
-pub trait BindingShift {
-    fn shift(&self, d: isize) -> Self;
+pub trait BindingShift: Sized {
+    fn shift(&self, d: isize) -> Result<Self>;
 }
