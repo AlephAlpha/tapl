@@ -17,6 +17,8 @@ pub enum Error {
     TypeError(String),
     #[error("{0}")]
     UnificationError(String),
+    #[error("{0}")]
+    KindError(String),
 }
 
 pub type Result<T, E = Error> = StdResult<T, E>;
