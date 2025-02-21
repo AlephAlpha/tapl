@@ -85,7 +85,7 @@ impl DeBruijnTy {
             }
             (Self::Record(fields), Self::Record(fields_)) => fields_
                 .iter()
-                .all(|(l_, ty_)| fields.iter().any(|(l, ty)| l_ == l && ty_.subtype(ty, ctx))),
+                .all(|(l_, ty_)| fields.iter().any(|(l, ty)| l_ == l && ty.subtype(ty_, ctx))),
             (Self::All(x, ty1, ty2), Self::All(_, ty1_, ty2_)) => {
                 ty1.subtype(ty1_, ctx)
                     && ty1_.subtype(ty1, ctx)

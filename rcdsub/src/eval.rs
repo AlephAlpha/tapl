@@ -15,7 +15,7 @@ impl Ty {
             (Self::Record(fields), Self::Record(fields_)) => fields_.iter().all(|(l_, ty_)| {
                 fields
                     .iter()
-                    .any(|(l, ty)| l_ == l && ty_.subtype(ty, _ctx))
+                    .any(|(l, ty)| l_ == l && ty.subtype(ty_, _ctx))
             }),
             _ => false,
         }
