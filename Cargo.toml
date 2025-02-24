@@ -23,8 +23,6 @@ members = [
     "fullomega",
 ]
 
-resolver = "2"
-
 [workspace.dependencies]
 chumsky = "0.9.3"
 rustyline = { version = "15.0.0", features = ["derive"] }

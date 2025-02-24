@@ -4,9 +4,9 @@
 use check_keyword::CheckKeyword;
 use convert_case::{Case, Casing};
 use darling::{
+    FromDeriveInput, FromField, FromVariant,
     ast::{Data, Fields, Style},
     util::Ignored,
-    FromDeriveInput, FromField, FromVariant,
 };
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};

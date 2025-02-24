@@ -6,8 +6,8 @@ mod eval;
 mod parser;
 mod syntax;
 
-use rustyline::{history::DefaultHistory, Editor, Result};
-use syntax::{Command, COMMANDS, KEYWORDS};
+use rustyline::{Editor, Result, history::DefaultHistory};
+use syntax::{COMMANDS, Command, KEYWORDS};
 use util::KeywordsCompleter;
 
 fn main() -> Result<()> {

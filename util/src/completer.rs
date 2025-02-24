@@ -1,4 +1,4 @@
-use rustyline::{completion::Completer, Context, Helper, Highlighter, Hinter, Result, Validator};
+use rustyline::{Context, Helper, Highlighter, Hinter, Result, Validator, completion::Completer};
 use std::collections::BTreeSet;
 
 /// A rustyline completer that completes based on a list of keywords.

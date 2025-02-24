@@ -7,8 +7,8 @@ mod parser;
 mod syntax;
 
 use eval::{Constr, UVarGen};
-use rustyline::{history::DefaultHistory, Editor, Result};
-use syntax::{Command, Context, COMMANDS, KEYWORDS};
+use rustyline::{Editor, Result, history::DefaultHistory};
+use syntax::{COMMANDS, Command, Context, KEYWORDS};
 use util::KeywordsCompleter;
 
 fn main() -> Result<()> {

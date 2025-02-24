@@ -3,8 +3,8 @@ use std::{
     rc::Rc,
 };
 use util::{
-    error::{Error, Result},
     RcTerm,
+    error::{Error, Result},
 };
 
 pub const KEYWORDS: &[&str] = &["lambda", "_", "Bot", "Top"];

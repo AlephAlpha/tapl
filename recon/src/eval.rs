@@ -153,7 +153,7 @@ impl Constr {
                 _ => {
                     return Err(Error::UnificationError(
                         "Unsolvable constraints".to_string(),
-                    ))
+                    ));
                 }
             }
         }
