@@ -3,8 +3,8 @@ use std::{
     rc::Rc,
 };
 use util::{
-    error::{Error, Result},
     BindingShift, RcTerm,
+    error::{Error, Result},
 };
 
 pub const KEYWORDS: &[&str] = &[
@@ -349,7 +349,7 @@ impl<V: Display> Display for Term<V> {
                 if matches!(ty.as_ref(), Ty::Top) {
                     write!(f, "lambda {x}. {t}")
                 } else {
-                    write!(f, "lambda {x}:: {ty}. {t}")
+                    write!(f, "lambda {x} <: {ty}. {t}")
                 }
             }
             Self::Unpack(x1, x2, t1, t2) => {

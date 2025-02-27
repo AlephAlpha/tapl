@@ -441,7 +441,7 @@ impl DeBruijnTerm {
                     Err(Error::TypeError("star kind expected".to_string()))
                 }
             }
-            Self::App(t1, t2) => match t1.type_of(ctx)?.simplify(ctx).as_ref() {
+            Self::App(t1, t2) => match t1.type_of(ctx)?.lcst(ctx).as_ref() {
                 Ty::Arr(ty11, ty12) => {
                     if t2.type_of(ctx)?.subtype(ty11, ctx) {
                         Ok(ty12.clone())

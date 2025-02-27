@@ -1,4 +1,4 @@
-use crate::syntax::{Binding, Command, Kind, Term, Ty, KEYWORDS};
+use crate::syntax::{Binding, Command, KEYWORDS, Kind, Term, Ty};
 use chumsky::prelude::*;
 use std::rc::Rc;
 

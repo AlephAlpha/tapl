@@ -22,6 +22,7 @@ members = [
     "purefsub",
     "fullomega",
     "fullfomsub",
+    "fomsub",
 ]
 resolver = "3"
 

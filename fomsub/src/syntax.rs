@@ -11,9 +11,17 @@ pub const KEYWORDS: &[&str] = &["lambda", "_", "Top", "All"];
 pub const COMMANDS: &[&str] = &["eval", "eval1", "bind", "type"];
 
 #[derive(Clone, Debug, PartialEq, RcTerm)]
+pub enum Kind {
+    Star,
+    Arr(Rc<Self>, Rc<Self>),
+}
+
+#[derive(Clone, Debug, PartialEq, RcTerm)]
 pub enum Ty<V = String> {
-    Top,
     Var(#[rc_term(into)] V),
+    Abs(#[rc_term(into)] String, Rc<Kind>, Rc<Self>),
+    App(Rc<Self>, Rc<Self>),
+    Top,
     Arr(Rc<Self>, Rc<Self>),
     All(#[rc_term(into)] String, Rc<Self>, Rc<Self>),
 }
@@ -31,11 +39,19 @@ pub enum Term<V = String> {
 
 pub type DeBruijnTerm = Term<usize>;
 
-impl<V: Display> Ty<V> {
+impl Kind {
+    pub fn make_top<V>(&self) -> Rc<Ty<V>> {
+        match self {
+            Self::Star => Ty::top(),
+            Self::Arr(kn1, kn2) => Ty::abs("_".to_string(), kn1.clone(), kn2.make_top()),
+        }
+    }
+}
+
+impl Kind {
     fn fmt_atom(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Top => write!(f, "Top"),
-            Self::Var(x) => write!(f, "{x}"),
+            Self::Star => write!(f, "*"),
             t => write!(f, "({t})"),
         }
     }
@@ -52,9 +68,54 @@ impl<V: Display> Ty<V> {
     }
 }
 
+impl Display for Kind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.fmt_arrow(f)
+    }
+}
+
+impl<V: Display> Ty<V> {
+    fn fmt_atom(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Var(x) => write!(f, "{x}"),
+            Self::Top => write!(f, "Top"),
+            t => write!(f, "({t})"),
+        }
+    }
+
+    fn fmt_app(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::App(t1, t2) => {
+                t1.fmt_app(f)?;
+                write!(f, " ")?;
+                t2.fmt_atom(f)
+            }
+            t => t.fmt_atom(f),
+        }
+    }
+
+    fn fmt_arrow(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Arr(t1, t2) => {
+                t1.fmt_app(f)?;
+                write!(f, " -> ")?;
+                t2.fmt_arrow(f)
+            }
+            t => t.fmt_app(f),
+        }
+    }
+}
+
 impl<V: Display> Display for Ty<V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Abs(x, kn, ty) => {
+                if matches!(kn.as_ref(), Kind::Star) {
+                    write!(f, "lambda {x}. {ty}")
+                } else {
+                    write!(f, "lambda {x}:: {kn}. {ty}")
+                }
+            }
             Self::All(x, ty1, ty2) => {
                 if matches!(ty1.as_ref(), Self::Top) {
                     write!(f, "All {x}. {ty2}")
@@ -135,19 +196,26 @@ impl DeBruijnTy {
         cutoff: usize,
         on_var: &mut impl FnMut(usize, usize) -> Result<Rc<Self>>,
     ) -> Result<Rc<Self>> {
-        match self {
-            Self::Top => Ok(Self::top()),
-            Self::Var(x) => on_var(cutoff, *x),
-            Self::All(x, ty1, ty2) => Ok(Self::all(
+        Ok(match self {
+            Self::Arr(ty1, ty2) => Self::arr(
+                ty1.map_vars_walk(cutoff, on_var)?,
+                ty2.map_vars_walk(cutoff, on_var)?,
+            ),
+            Self::Var(x) => on_var(cutoff, *x)?,
+            Self::Abs(x, kn, ty) => {
+                Self::abs(x.clone(), kn.clone(), ty.map_vars_walk(cutoff + 1, on_var)?)
+            }
+            Self::App(ty1, ty2) => Self::app(
+                ty1.map_vars_walk(cutoff, on_var)?,
+                ty2.map_vars_walk(cutoff, on_var)?,
+            ),
+            Self::Top => Self::top(),
+            Self::All(x, ty1, ty2) => Self::all(
                 x.clone(),
                 ty1.map_vars_walk(cutoff, on_var)?,
                 ty2.map_vars_walk(cutoff + 1, on_var)?,
-            )),
-            Self::Arr(t1, t2) => Ok(Self::arr(
-                t1.map_vars_walk(cutoff, on_var)?,
-                t2.map_vars_walk(cutoff, on_var)?,
-            )),
-        }
+            ),
+        })
     }
 
     fn map_vars(
@@ -179,7 +247,7 @@ impl DeBruijnTy {
     fn subst(&self, j: usize, s: &Self) -> Result<Rc<Self>> {
         self.map_vars(j, |c, x| {
             if x == c {
-                s.shift(c as isize)?.as_ref().shift(0)
+                s.shift(c as isize)
             } else {
                 Ok(Self::var(x))
             }
@@ -198,27 +266,27 @@ impl DeBruijnTerm {
         on_var: &mut impl FnMut(usize, usize) -> Result<Rc<Self>>,
         on_type: &mut impl FnMut(usize, &Rc<DeBruijnTy>) -> Result<Rc<DeBruijnTy>>,
     ) -> Result<Rc<Self>> {
-        match self {
-            Self::Var(x) => on_var(cutoff, *x),
-            Self::Abs(x, ty, t) => Ok(Self::abs(
+        Ok(match self {
+            Self::Var(x) => on_var(cutoff, *x)?,
+            Self::Abs(x, ty, t) => Self::abs(
                 x.clone(),
                 on_type(cutoff, ty)?,
                 t.map_vars_walk(cutoff + 1, on_var, on_type)?,
-            )),
-            Self::App(t1, t2) => Ok(Self::app(
+            ),
+            Self::App(t1, t2) => Self::app(
                 t1.map_vars_walk(cutoff, on_var, on_type)?,
                 t2.map_vars_walk(cutoff, on_var, on_type)?,
-            )),
-            Self::TAbs(x, ty, t) => Ok(Self::t_abs(
+            ),
+            Self::TAbs(x, ty, t) => Self::t_abs(
                 x.clone(),
                 on_type(cutoff, ty)?,
                 t.map_vars_walk(cutoff + 1, on_var, on_type)?,
-            )),
-            Self::TApp(t, ty) => Ok(Self::t_app(
+            ),
+            Self::TApp(t, ty) => Self::t_app(
                 t.map_vars_walk(cutoff, on_var, on_type)?,
                 on_type(cutoff, ty)?,
-            )),
-        }
+            ),
+        })
     }
 
     fn map_vars(
@@ -254,7 +322,7 @@ impl DeBruijnTerm {
             j,
             |c, x| {
                 if x == c {
-                    s.shift(c as isize)?.as_ref().shift(0)
+                    s.shift(c as isize)
                 } else {
                     Ok(Self::var(x))
                 }
@@ -281,7 +349,7 @@ impl BindingShift for DeBruijnBinding {
         match self {
             Self::Name => Ok(Self::Name),
             Self::Var(ty) => Ok(Self::Var(ty.shift(d)?)),
-            Self::TyVar(ty) => Ok(Self::TyVar(ty.shift(d)?)),
+            Self::TyVar(kn) => Ok(Self::TyVar(kn.clone())),
         }
     }
 }
@@ -289,9 +357,18 @@ impl BindingShift for DeBruijnBinding {
 impl DeBruijnTy {
     pub fn to_named(&self, ctx: &mut Context) -> Result<Rc<Ty>> {
         match self {
-            Self::Top => Ok(Ty::top()),
             Self::Var(x) => Ok(Ty::var(ctx.index_to_name(*x)?)),
-            Self::Arr(t1, t2) => Ok(Ty::arr(t1.to_named(ctx)?, t2.to_named(ctx)?)),
+            Self::Abs(x, kn, ty) => {
+                let name = ctx.pick_fresh_name(x);
+                Ok(Ty::abs(
+                    name.clone(),
+                    kn.clone(),
+                    ctx.with_name(name, |ctx| ty.to_named(ctx))?,
+                ))
+            }
+            Self::App(ty1, ty2) => Ok(Ty::app(ty1.to_named(ctx)?, ty2.to_named(ctx)?)),
+            Self::Top => Ok(Ty::top()),
+            Self::Arr(ty1, ty2) => Ok(Ty::arr(ty1.to_named(ctx)?, ty2.to_named(ctx)?)),
             Self::All(x, ty1, ty2) => {
                 let name = ctx.pick_fresh_name(x);
                 Ok(Ty::all(
@@ -307,11 +384,20 @@ impl DeBruijnTy {
 impl Ty {
     pub fn to_de_bruijn(&self, ctx: &mut Context) -> Result<Rc<DeBruijnTy>> {
         match self {
-            Self::Top => Ok(DeBruijnTy::top()),
             Self::Var(x) => Ok(DeBruijnTy::var(ctx.name_to_index(x)?)),
-            Self::Arr(t1, t2) => Ok(DeBruijnTy::arr(
-                t1.to_de_bruijn(ctx)?,
-                t2.to_de_bruijn(ctx)?,
+            Self::Abs(x, kn, ty) => Ok(DeBruijnTy::abs(
+                x.clone(),
+                kn.clone(),
+                ctx.with_name(x.clone(), |ctx| ty.to_de_bruijn(ctx))?,
+            )),
+            Self::App(ty1, ty2) => Ok(DeBruijnTy::app(
+                ty1.to_de_bruijn(ctx)?,
+                ty2.to_de_bruijn(ctx)?,
+            )),
+            Self::Top => Ok(DeBruijnTy::top()),
+            Self::Arr(ty1, ty2) => Ok(DeBruijnTy::arr(
+                ty1.to_de_bruijn(ctx)?,
+                ty2.to_de_bruijn(ctx)?,
             )),
             Self::All(x, ty1, ty2) => Ok(DeBruijnTy::all(
                 x.clone(),
