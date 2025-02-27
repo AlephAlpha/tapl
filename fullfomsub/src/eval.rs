@@ -1,10 +1,11 @@
-use crate::syntax::{Binding, Context, DeBruijnBinding, DeBruijnTerm, DeBruijnTy, Term, Ty};
+use crate::syntax::{Binding, Context, DeBruijnBinding, DeBruijnTerm, DeBruijnTy, Kind, Term, Ty};
 use std::rc::Rc;
 use util::error::{Error, Result};
 
 impl DeBruijnTy {
     fn promote(&self, ctx: &Context) -> Result<Rc<Self>> {
         match self {
+            Self::App(ty1, ty2) => Ok(Self::app(ty1.promote(ctx)?, ty2.clone())),
             Self::Var(i) => match ctx.get_binding_shifting(*i) {
                 Ok(Binding::TyVar(ty)) => Ok(ty),
                 _ => Err(Error::NoRuleApplies),
@@ -15,8 +16,12 @@ impl DeBruijnTy {
 
     fn compute(&self, ctx: &Context) -> Result<Rc<Self>> {
         match self {
+            Self::App(ty1, ty2) => match ty1.as_ref() {
+                Self::Abs(_, _, ty) => ty.subst_top(ty2),
+                _ => Ok(Self::app(ty1.compute(ctx)?, ty2.clone())),
+            },
             Self::Var(i) => match ctx.get_binding_shifting(*i) {
-                Ok(Binding::TyAbb(ty)) => Ok(ty),
+                Ok(Binding::TyAbb(ty, _)) => Ok(ty),
                 _ => Err(Error::NoRuleApplies),
             },
             _ => Err(Error::NoRuleApplies),
@@ -24,11 +29,11 @@ impl DeBruijnTy {
     }
 
     fn simplify(&self, ctx: &Context) -> Rc<Self> {
-        let mut ty = Rc::new(self.clone());
-        while let Ok(ty_) = ty.compute(ctx) {
-            ty = ty_;
+        let mut t = Rc::new(self.clone());
+        while let Ok(t_) = t.compute(ctx) {
+            t = t_;
         }
-        ty
+        t
     }
 
     fn lcst(&self, ctx: &Context) -> Rc<Self> {
@@ -46,10 +51,16 @@ impl DeBruijnTy {
             (Self::Top, Self::Top)
             | (Self::Bool, Self::Bool)
             | (Self::Nat, Self::Nat)
-            | (Self::Unit, Self::Unit)
             | (Self::String, Self::String)
-            | (Self::Float, Self::Float) => true,
+            | (Self::Float, Self::Float)
+            | (Self::Unit, Self::Unit) => true,
             (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => {
+                ty1.eqv(ty1_, ctx) && ty2.eqv(ty2_, ctx)
+            }
+            (Self::Abs(x, kn, ty), Self::Abs(_, kn_, ty_)) => {
+                kn == kn_ && ctx.with_name(x.clone(), |ctx| ty.eqv(ty_, ctx))
+            }
+            (Self::App(ty1, ty2), Self::App(ty1_, ty2_)) => {
                 ty1.eqv(ty1_, ctx) && ty2.eqv(ty2_, ctx)
             }
             (Self::Record(fields), Self::Record(fields_)) => {
@@ -58,15 +69,85 @@ impl DeBruijnTy {
                         .iter()
                         .all(|(l, ty)| fields_.iter().any(|(l_, ty_)| l == l_ && ty.eqv(ty_, ctx)))
             }
-            (Self::Some(x, ty1, ty2), Self::Some(_, ty1_, ty2_)) => {
-                ty1.eqv(ty1_, ctx) && ctx.with_name(x.clone(), |ctx| ty2.eqv(ty2_, ctx))
+            (Self::Some(x, ty1, ty2), Self::Some(_, kn_, ty_)) => {
+                ty1 == kn_ && ctx.with_name(x.clone(), |ctx| ty2.eqv(ty_, ctx))
             }
             (Self::Id(b1), Self::Id(b2)) => b1 == b2,
             (Self::Var(i), Self::Var(j)) => i == j,
-            (Self::All(x, ty1, ty2), Self::All(_, ty1_, ty2_)) => {
-                ty1.eqv(ty1_, ctx) && ctx.with_name(x.clone(), |ctx| ty2.eqv(ty2_, ctx))
+            (Self::All(x, ty1, ty2), Self::All(_, kn_, ty_)) => {
+                ty1 == kn_ && ctx.with_name(x.clone(), |ctx| ty2.eqv(ty_, ctx))
             }
             _ => false,
+        }
+    }
+
+    pub fn kind_of(&self, ctx: &mut Context) -> Result<Rc<Kind>> {
+        match self {
+            Self::Arr(ty1, ty2) => {
+                if matches!(ty1.kind_of(ctx)?.as_ref(), Kind::Star)
+                    && matches!(ty2.kind_of(ctx)?.as_ref(), Kind::Star)
+                {
+                    Ok(Kind::star())
+                } else {
+                    Err(Error::KindError("star kind expected".to_string()))
+                }
+            }
+            Self::Var(i) => match ctx.get_binding_shifting(*i)? {
+                Binding::TyVar(ty) => ty.kind_of(ctx),
+                Binding::TyAbb(_, Some(kn)) => Ok(kn),
+                _ => Err(Error::KindError(format!(
+                    "wrong kind of binding for variable {}",
+                    ctx.index_to_name(*i).unwrap()
+                ))),
+            },
+            Self::Abs(x, kn1, ty2) => {
+                ctx.with_binding(x.clone(), Binding::TyVar(kn1.make_top()), |ctx| {
+                    let kn2 = ty2.kind_of(ctx)?;
+                    Ok(Kind::arr(kn1.clone(), kn2))
+                })
+            }
+            Self::App(ty1, ty2) => {
+                let kn1 = ty1.kind_of(ctx)?;
+                let kn2 = ty2.kind_of(ctx)?;
+                match kn1.as_ref() {
+                    Kind::Arr(kn11, kn12) => {
+                        if *kn11 == kn2 {
+                            Ok(kn12.clone())
+                        } else {
+                            Err(Error::KindError("parameter kind mismatch".to_string()))
+                        }
+                    }
+                    _ => Err(Error::KindError("arrow kind expected".to_string())),
+                }
+            }
+            Self::All(x, ty1, ty2) => {
+                ctx.with_binding(x.clone(), Binding::TyVar(ty1.clone()), |ctx| {
+                    let kn2 = ty2.kind_of(ctx)?;
+                    if matches!(kn2.as_ref(), Kind::Star) {
+                        Ok(Kind::star())
+                    } else {
+                        Err(Error::KindError("star kind expected".to_string()))
+                    }
+                })
+            }
+            Self::Record(fields) => fields.iter().try_fold(Kind::star(), |acc, (_, ty)| {
+                if matches!(ty.kind_of(ctx)?.as_ref(), Kind::Star) {
+                    Ok(acc)
+                } else {
+                    Err(Error::KindError("star kind expected".to_string()))
+                }
+            }),
+            Self::Some(x, ty1, ty2) => {
+                ctx.with_binding(x.clone(), Binding::TyVar(ty1.clone()), |ctx| {
+                    let kn2 = ty2.kind_of(ctx)?;
+                    if matches!(kn2.as_ref(), Kind::Star) {
+                        Ok(Kind::star())
+                    } else {
+                        Err(Error::KindError("star kind expected".to_string()))
+                    }
+                })
+            }
+            _ => Ok(Kind::star()),
         }
     }
 
@@ -78,14 +159,10 @@ impl DeBruijnTy {
         let self_ = self.simplify(ctx);
         let other_ = other.simplify(ctx);
         match (self_.as_ref(), other_.as_ref()) {
-            (_, Self::Top) => true,
+            (_, Self::Top) => self_
+                .kind_of(ctx)
+                .is_ok_and(|kn| matches!(kn.as_ref(), Kind::Star)),
             (Self::Var(_), _) => self_.promote(ctx).is_ok_and(|ty| ty.subtype(other, ctx)),
-            (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => {
-                ty1_.subtype(ty1, ctx) && ty2.subtype(ty2_, ctx)
-            }
-            (Self::Record(fields), Self::Record(fields_)) => fields_
-                .iter()
-                .all(|(l_, ty_)| fields.iter().any(|(l, ty)| l_ == l && ty.subtype(ty_, ctx))),
             (Self::All(x, ty1, ty2), Self::All(_, ty1_, ty2_)) => {
                 ty1.subtype(ty1_, ctx)
                     && ty1_.subtype(ty1, ctx)
@@ -93,6 +170,12 @@ impl DeBruijnTy {
                         ty2.subtype(ty2_, ctx)
                     })
             }
+            (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => {
+                ty1_.subtype(ty1, ctx) && ty2.subtype(ty2_, ctx)
+            }
+            (Self::Record(fields), Self::Record(fields_)) => fields_
+                .iter()
+                .all(|(l_, ty_)| fields.iter().any(|(l, ty)| l_ == l && ty.subtype(ty_, ctx))),
             (Self::Some(x, ty1, ty2), Self::Some(_, ty1_, ty2_)) => {
                 ty1.subtype(ty1_, ctx)
                     && ty1_.subtype(ty1, ctx)
@@ -100,6 +183,13 @@ impl DeBruijnTy {
                         ty2.subtype(ty2_, ctx)
                     })
             }
+            (Self::Abs(x, kn1, ty2), Self::Abs(_, kn1_, ty2_)) => {
+                kn1 == kn1_
+                    && ctx.with_binding(x.clone(), Binding::TyVar(kn1.make_top()), |ctx| {
+                        ty2.subtype(ty2_, ctx)
+                    })
+            }
+            (Self::App(_, _), _) => self_.promote(ctx).is_ok_and(|ty| ty.subtype(other, ctx)),
             _ => false,
         }
     }
@@ -128,9 +218,6 @@ impl DeBruijnTy {
                     Self::top()
                 }
             }
-            (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => ty1
-                .meet(ty1_, ctx)
-                .map_or_else(Self::top, |ty11| Self::arr(ty11, ty2.join(ty2_, ctx))),
             (Self::Record(fields), Self::Record(fields_)) => {
                 let common_fields = fields
                     .iter()
@@ -143,6 +230,9 @@ impl DeBruijnTy {
                     .collect::<Vec<_>>();
                 Self::record(common_fields)
             }
+            (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => ty1
+                .meet(ty1_, ctx)
+                .map_or_else(Self::top, |ty11| Self::arr(ty11, ty2.join(ty2_, ctx))),
             _ => Self::top(),
         }
     }
@@ -170,9 +260,6 @@ impl DeBruijnTy {
                 } else {
                     None
                 }
-            }
-            (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => {
-                Some(Self::arr(ty1.join(ty1_, ctx), ty2.meet(ty2_, ctx)?))
             }
             (Self::Record(fields), Self::Record(fields_)) => {
                 let common_fields = fields
@@ -202,6 +289,9 @@ impl DeBruijnTy {
                     .collect::<Vec<_>>();
                 Some(Self::record(all_fields))
             }
+            (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => {
+                Some(Self::arr(ty1.join(ty1_, ctx), ty2.meet(ty2_, ctx)?))
+            }
             _ => None,
         }
     }
@@ -229,25 +319,6 @@ impl DeBruijnTerm {
 
     pub fn eval1(&self, ctx: &Context) -> Result<Rc<Self>> {
         match self {
-            Self::Ascribe(t, ty) => {
-                if t.is_val(ctx) {
-                    Ok(t.clone())
-                } else {
-                    Ok(Self::ascribe(t.eval1(ctx)?, ty.clone()))
-                }
-            }
-            Self::Unpack(x1, x2, t1, t2) => match t1.as_ref() {
-                Self::Pack(ty11, t12, _) if t12.is_val(ctx) => {
-                    t2.subst_top(t12.shift(1)?.as_ref())?.subst_top_ty(ty11)
-                }
-                _ => Ok(Self::unpack(
-                    x1.clone(),
-                    x2.clone(),
-                    t1.eval1(ctx)?,
-                    t2.clone(),
-                )),
-            },
-            Self::Pack(ty1, t2, ty3) => Ok(Self::pack(ty1.clone(), t2.eval1(ctx)?, ty3.clone())),
             Self::App(t1, t2) => match t1.as_ref() {
                 Self::Abs(_, _, t) if t2.is_val(ctx) => t.subst_top(t2),
                 _ => {
@@ -258,6 +329,13 @@ impl DeBruijnTerm {
                     }
                 }
             },
+            Self::Ascribe(t, ty) => {
+                if t.is_val(ctx) {
+                    Ok(t.clone())
+                } else {
+                    Ok(Self::ascribe(t.eval1(ctx)?, ty.clone()))
+                }
+            }
             Self::TApp(t, ty) => match t.as_ref() {
                 Self::TAbs(_, _, t) => t.subst_top_ty(ty),
                 _ => Ok(Self::t_app(t.eval1(ctx)?, ty.clone())),
@@ -281,6 +359,18 @@ impl DeBruijnTerm {
                 }
                 _ => Ok(Self::proj(t.eval1(ctx)?, l.clone())),
             },
+            Self::Unpack(x1, x2, t1, t2) => match t1.as_ref() {
+                Self::Pack(ty11, t12, _) if t12.is_val(ctx) => {
+                    t2.subst_top(t12.shift(1)?.as_ref())?.subst_top_ty(ty11)
+                }
+                _ => Ok(Self::unpack(
+                    x1.clone(),
+                    x2.clone(),
+                    t1.eval1(ctx)?,
+                    t2.clone(),
+                )),
+            },
+            Self::Pack(ty1, t2, ty3) => Ok(Self::pack(ty1.clone(), t2.eval1(ctx)?, ty3.clone())),
             Self::If(t1, t2, t3) => match t1.as_ref() {
                 Self::True => Ok(t2.clone()),
                 Self::False => Ok(t3.clone()),
@@ -334,63 +424,6 @@ impl DeBruijnTerm {
 
     pub fn type_of(&self, ctx: &mut Context) -> Result<Rc<DeBruijnTy>> {
         match self {
-            Self::Ascribe(t, ty) => {
-                if t.type_of(ctx)?.subtype(ty, ctx) {
-                    Ok(ty.clone())
-                } else {
-                    Err(Error::TypeError(
-                        "body of as-term does not have the expected type".to_string(),
-                    ))
-                }
-            }
-            Self::String(_) => Ok(Ty::string()),
-            Self::TAbs(x, ty, t) => {
-                ctx.with_binding(x.clone(), Binding::TyVar(ty.clone()), |ctx| {
-                    Ok(Ty::all(x.clone(), ty.clone(), t.type_of(ctx)?))
-                })
-            }
-            Self::TApp(t, ty) => match t.type_of(ctx)?.lcst(ctx).as_ref() {
-                Ty::All(_, ty1, ty2) => {
-                    if ty.subtype(ty1, ctx) {
-                        ty2.subst_top(ty)
-                    } else {
-                        Err(Error::TypeError("type parameter type mismatch".to_string()))
-                    }
-                }
-                _ => Err(Error::TypeError("universal type expected".to_string())),
-            },
-            Self::Pack(ty1, t2, ty3) => match ty3.simplify(ctx).as_ref() {
-                Ty::Some(_, ty1_, ty2_) => {
-                    if ty1.subtype(ty1_, ctx) {
-                        if t2.type_of(ctx)?.subtype(ty2_.subst_top(ty1)?.as_ref(), ctx) {
-                            Ok(ty3.clone())
-                        } else {
-                            Err(Error::TypeError(
-                                "doesn't match declared type in existential".to_string(),
-                            ))
-                        }
-                    } else {
-                        Err(Error::TypeError(
-                            "hidden type not a subtype of bound".to_string(),
-                        ))
-                    }
-                }
-                _ => Err(Error::TypeError("existential type expected".to_string())),
-            },
-            Self::Unpack(x1, x2, t1, t2) => match t1.type_of(ctx)?.lcst(ctx).as_ref() {
-                Ty::Some(_, ty1, ty2) => {
-                    // This follows the reference OCaml implementation,
-                    // but it seems to be incorrect.
-                    // We should ensure that the resulting type does not mention x1.
-                    // See chapter 28.7 in the book Types and Programming Languages.
-                    ctx.with_binding(x1.clone(), Binding::TyVar(ty1.clone()), |ctx| {
-                        ctx.with_binding(x2.clone(), Binding::Var(ty2.clone()), |ctx| {
-                            t2.type_of(ctx)?.shift(-2)
-                        })
-                    })
-                }
-                _ => Err(Error::TypeError("existential type expected".to_string())),
-            },
             Self::Var(i) => match ctx.get_binding_shifting(*i)? {
                 Binding::Var(ty) => Ok(ty),
                 Binding::TermAbb(_, Some(ty)) => Ok(ty),
@@ -400,11 +433,15 @@ impl DeBruijnTerm {
                 ))),
             },
             Self::Abs(x, ty1, t2) => {
-                ctx.with_binding(x.clone(), Binding::Var(ty1.clone()), |ctx| {
-                    Ok(Ty::arr(ty1.clone(), t2.type_of(ctx)?.shift(-1)?))
-                })
+                if matches!(ty1.kind_of(ctx)?.as_ref(), Kind::Star) {
+                    ctx.with_binding(x.clone(), Binding::Var(ty1.clone()), |ctx| {
+                        Ok(Ty::arr(ty1.clone(), t2.type_of(ctx)?.shift(-1)?))
+                    })
+                } else {
+                    Err(Error::TypeError("star kind expected".to_string()))
+                }
             }
-            Self::App(t1, t2) => match t1.type_of(ctx)?.lcst(ctx).as_ref() {
+            Self::App(t1, t2) => match t1.type_of(ctx)?.simplify(ctx).as_ref() {
                 Ty::Arr(ty11, ty12) => {
                     if t2.type_of(ctx)?.subtype(ty11, ctx) {
                         Ok(ty12.clone())
@@ -414,6 +451,35 @@ impl DeBruijnTerm {
                 }
                 _ => Err(Error::TypeError("arrow type expected".to_string())),
             },
+            Self::Ascribe(t, ty) => {
+                if matches!(ty.kind_of(ctx)?.as_ref(), Kind::Star) {
+                    if t.type_of(ctx)?.subtype(ty, ctx) {
+                        Ok(ty.clone())
+                    } else {
+                        Err(Error::TypeError(
+                            "body of as-term does not have the expected type".to_string(),
+                        ))
+                    }
+                } else {
+                    Err(Error::TypeError("star kind expected".to_string()))
+                }
+            }
+            Self::TAbs(x, ty1, t2) => {
+                ctx.with_binding(x.clone(), Binding::TyVar(ty1.clone()), |ctx| {
+                    Ok(Ty::all(x.clone(), ty1.clone(), t2.type_of(ctx)?))
+                })
+            }
+            Self::TApp(t1, ty2) => match t1.type_of(ctx)?.lcst(ctx).as_ref() {
+                Ty::All(_, ty11, ty12) => {
+                    if ty2.subtype(ty11, ctx) {
+                        ty12.subst_top(ty2)
+                    } else {
+                        Err(Error::TypeError("type argument has wrong kind".to_string()))
+                    }
+                }
+                _ => Err(Error::TypeError("universal type expected".to_string())),
+            },
+            Self::String(_) => Ok(Ty::string()),
             Self::Record(fields) => {
                 let fields = fields
                     .iter()
@@ -428,6 +494,42 @@ impl DeBruijnTerm {
                     .map(|(_, ty)| ty.clone())
                     .ok_or_else(|| Error::TypeError(format!("label {l} not found"))),
                 _ => Err(Error::TypeError("expected record type".to_string())),
+            },
+            Self::Pack(ty1, t2, ty3) => {
+                if matches!(ty3.kind_of(ctx)?.as_ref(), Kind::Star) {
+                    match ty3.simplify(ctx).as_ref() {
+                        Ty::Some(_, ty1_, ty2_) => {
+                            if ty1.subtype(ty1_, ctx) {
+                                if t2.type_of(ctx)?.subtype(ty2_.subst_top(ty1)?.as_ref(), ctx) {
+                                    Ok(ty3.clone())
+                                } else {
+                                    Err(Error::TypeError("doesn't match declared type".to_string()))
+                                }
+                            } else {
+                                Err(Error::TypeError(
+                                    "hidden type not a subtype of bound".to_string(),
+                                ))
+                            }
+                        }
+                        _ => Err(Error::TypeError("existential type expected".to_string())),
+                    }
+                } else {
+                    Err(Error::TypeError("star kind expected".to_string()))
+                }
+            }
+            Self::Unpack(x1, x2, t1, t2) => match t1.type_of(ctx)?.lcst(ctx).as_ref() {
+                Ty::Some(_, ty1, ty2) => {
+                    // This follows the reference OCaml implementation,
+                    // but it seems to be incorrect.
+                    // We should ensure that the resulting type does not mention x1.
+                    // See chapter 28.7 in the book Types and Programming Languages.
+                    ctx.with_binding(x1.clone(), Binding::TyVar(ty1.clone()), |ctx| {
+                        ctx.with_binding(x2.clone(), Binding::Var(ty2.clone()), |ctx| {
+                            t2.type_of(ctx)?.shift(-2)
+                        })
+                    })
+                }
+                _ => Err(Error::TypeError("existential type expected".to_string())),
             },
             Self::True | Self::False => Ok(Ty::bool()),
             Self::If(t1, t2, t3) => {
@@ -537,6 +639,18 @@ impl DeBruijnBinding {
                     }
                 } else {
                     Ok(Self::TermAbb(t.clone(), Some(ty_)))
+                }
+            }
+            Self::TyAbb(ty, kn) => {
+                let kn_ = ty.kind_of(ctx)?;
+                if let Some(kn) = kn {
+                    if kn_ == *kn {
+                        Ok(Self::TyAbb(ty.clone(), Some(kn.clone())))
+                    } else {
+                        Err(Error::TypeMismatch)
+                    }
+                } else {
+                    Ok(Self::TyAbb(ty.clone(), Some(kn_)))
                 }
             }
             _ => Ok(self.clone()),

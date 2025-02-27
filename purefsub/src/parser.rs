@@ -63,9 +63,8 @@ impl Term {
                 Ty(Rc<Ty>),
             }
 
-            let arg = atom.clone().map(Arg::Atom).or(just('[')
-                .ignore_then(Ty::parser())
-                .then_ignore(just(']'))
+            let arg = atom.clone().map(Arg::Atom).or(Ty::parser()
+                .delimited_by(just('['), just(']'))
                 .padded()
                 .map(Arg::Ty));
 

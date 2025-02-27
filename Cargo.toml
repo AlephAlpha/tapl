@@ -21,7 +21,9 @@ members = [
     "fullfsub",
     "purefsub",
     "fullomega",
+    "fullfomsub",
 ]
+resolver = "3"
 
 [workspace.dependencies]
 chumsky = "0.9.3"

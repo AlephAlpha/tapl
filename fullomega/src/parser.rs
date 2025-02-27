@@ -5,15 +5,15 @@ use std::rc::Rc;
 impl Kind {
     fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
         recursive(|kind| {
-            let star = text::keyword("*").to(Self::star());
+            let star = just('*').to(Self::star());
 
             let parens = kind.clone().delimited_by(just('('), just(')'));
 
-            let atom = star.or(parens);
+            let atom = star.or(parens).padded();
 
             let arrow = atom
                 .clone()
-                .then_ignore(just("->"))
+                .then_ignore(just("=>"))
                 .repeated()
                 .then(atom)
                 .foldr(Self::arr);
@@ -38,8 +38,8 @@ impl Ty {
             let nat = text::keyword("Nat").to(Self::nat());
             let float = text::keyword("Float").to(Self::float());
 
-            let some = just('{')
-                .then(text::keyword("Some").padded())
+            let some = text::keyword("Some")
+                .padded()
                 .ignore_then(Self::ident().padded())
                 .then(
                     just("::")
@@ -49,7 +49,7 @@ impl Ty {
                 )
                 .then_ignore(just(','))
                 .then(ty.clone())
-                .then_ignore(just('}'))
+                .delimited_by(just('{'), just('}'))
                 .map(|((x, kn), t)| Self::some(x, kn, t));
 
             let field = text::ident()
@@ -66,10 +66,7 @@ impl Ty {
                     .collect::<Vec<_>>()
             });
 
-            let record = just('{')
-                .ignore_then(fields.clone())
-                .then_ignore(just('}'))
-                .map(Self::record);
+            let record = fields.delimited_by(just('{'), just('}')).map(Self::record);
 
             let parens = ty.clone().delimited_by(just('('), just(')'));
 
@@ -152,17 +149,14 @@ impl Term {
                     .collect::<Vec<_>>()
             });
 
-            let record = just('{')
-                .ignore_then(fields)
-                .then_ignore(just('}'))
-                .map(Self::record);
+            let record = fields.delimited_by(just('{'), just('}')).map(Self::record);
 
-            let pack = just('{')
-                .then(just('*').padded())
+            let pack = just('*')
+                .padded()
                 .ignore_then(Ty::parser())
                 .then_ignore(just(','))
                 .then(term.clone())
-                .then_ignore(just('}'))
+                .delimited_by(just('{'), just('}'))
                 .then_ignore(text::keyword("as").padded())
                 .then(Ty::parser())
                 .map(|((ty1, t2), ty3)| Self::pack(ty1, t2, ty3));
@@ -232,9 +226,8 @@ impl Term {
                 Ty(Rc<Ty>),
             }
 
-            let arg = path.clone().map(Arg::Path).or(just('[')
-                .ignore_then(Ty::parser())
-                .then_ignore(just(']'))
+            let arg = path.clone().map(Arg::Path).or(Ty::parser()
+                .delimited_by(just('['), just(']'))
                 .padded()
                 .map(Arg::Ty));
 
@@ -283,11 +276,13 @@ impl Term {
 
             let unpack = text::keyword("let")
                 .padded()
-                .then(just('{'))
-                .ignore_then(Ty::ident().padded())
-                .then_ignore(just(','))
-                .then(Self::ident().padded())
-                .then_ignore(just('}'))
+                .ignore_then(
+                    Ty::ident()
+                        .padded()
+                        .then_ignore(just(','))
+                        .then(Self::ident().padded())
+                        .delimited_by(just('{'), just('}')),
+                )
                 .then_ignore(just('=').padded())
                 .then(term.clone())
                 .then_ignore(text::keyword("in"))
@@ -344,8 +339,18 @@ impl Binding {
             .or_not()
             .map(|k| k.unwrap_or_else(Kind::star))
             .map(Self::TyVar);
-        let ty_abb = just('=')
-            .ignore_then(Ty::parser())
+        let ty_abb = Ty::ident()
+            .padded()
+            .then(
+                just("::")
+                    .ignore_then(Kind::parser())
+                    .or_not()
+                    .map(|k| k.unwrap_or_else(Kind::star)),
+            )
+            .repeated()
+            .then_ignore(just('='))
+            .then(Ty::parser())
+            .foldr(|(x, kn), ty| Ty::abs(x, kn, ty))
             .map(|ty| Self::TyAbb(ty, None));
 
         ty_abb.or(ty_var).padded()

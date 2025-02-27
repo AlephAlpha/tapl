@@ -22,10 +22,7 @@ impl Ty {
                     .collect::<Vec<_>>()
             });
 
-            let record = just('{')
-                .ignore_then(fields.clone())
-                .then_ignore(just('}'))
-                .map(Self::record);
+            let record = fields.delimited_by(just('{'), just('}')).map(Self::record);
 
             let parens = ty.clone().delimited_by(just('('), just(')'));
 
@@ -70,10 +67,7 @@ impl Term {
                     .collect::<Vec<_>>()
             });
 
-            let record = just('{')
-                .ignore_then(fields)
-                .then_ignore(just('}'))
-                .map(Self::record);
+            let record = fields.delimited_by(just('{'), just('}')).map(Self::record);
 
             let parens = term.clone().delimited_by(just('('), just(')'));
 

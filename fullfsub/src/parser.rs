@@ -18,8 +18,8 @@ impl Ty {
             let float = text::keyword("Float").to(Self::float());
             let nat = text::keyword("Nat").to(Self::nat());
 
-            let some = just('{')
-                .then(text::keyword("Some").padded())
+            let some = text::keyword("Some")
+                .padded()
                 .ignore_then(Self::ident().padded())
                 .then(
                     just("<:")
@@ -29,7 +29,7 @@ impl Ty {
                 )
                 .then_ignore(just(','))
                 .then(ty.clone())
-                .then_ignore(just('}'))
+                .delimited_by(just('{'), just('}'))
                 .map(|((x, t1), t2)| Self::some(x, t1, t2));
 
             let field = text::ident()
@@ -46,10 +46,7 @@ impl Ty {
                     .collect::<Vec<_>>()
             });
 
-            let record = just('{')
-                .ignore_then(fields.clone())
-                .then_ignore(just('}'))
-                .map(Self::record);
+            let record = fields.delimited_by(just('{'), just('}')).map(Self::record);
 
             let parens = ty.clone().delimited_by(just('('), just(')'));
 
@@ -103,12 +100,12 @@ impl Term {
             let float = util::parser::float().map(Self::float);
             let int = util::parser::int().map(Self::from_int);
 
-            let pack = just('{')
-                .then(just('*').padded())
+            let pack = just('*')
+                .padded()
                 .ignore_then(Ty::parser())
                 .then_ignore(just(','))
                 .then(term.clone())
-                .then_ignore(just('}'))
+                .delimited_by(just('{'), just('}'))
                 .then_ignore(text::keyword("as").padded())
                 .then(Ty::parser())
                 .map(|((ty1, t2), ty3)| Self::pack(ty1, t2, ty3));
@@ -127,10 +124,7 @@ impl Term {
                     .collect::<Vec<_>>()
             });
 
-            let record = just('{')
-                .ignore_then(fields)
-                .then_ignore(just('}'))
-                .map(Self::record);
+            let record = fields.delimited_by(just('{'), just('}')).map(Self::record);
 
             let inert = text::keyword("inert")
                 .ignore_then(Ty::parser().delimited_by(just('['), just(']')).padded())
@@ -191,9 +185,8 @@ impl Term {
                 Ty(Rc<Ty>),
             }
 
-            let arg = path.clone().map(Arg::Path).or(just('[')
-                .ignore_then(Ty::parser())
-                .then_ignore(just(']'))
+            let arg = path.clone().map(Arg::Path).or(Ty::parser()
+                .delimited_by(just('['), just(']'))
                 .padded()
                 .map(Arg::Ty));
 
@@ -234,11 +227,13 @@ impl Term {
 
             let unpack = text::keyword("let")
                 .padded()
-                .then(just('{'))
-                .ignore_then(Ty::ident().padded())
-                .then_ignore(just(','))
-                .then(Self::ident().padded())
-                .then_ignore(just('}'))
+                .ignore_then(
+                    Ty::ident()
+                        .padded()
+                        .then_ignore(just(','))
+                        .then(Self::ident().padded())
+                        .delimited_by(just('{'), just('}')),
+                )
                 .then_ignore(just('=').padded())
                 .then(term.clone())
                 .then_ignore(text::keyword("in"))

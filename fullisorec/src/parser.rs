@@ -31,14 +31,14 @@ impl Ty {
                     .collect::<Vec<_>>()
             });
 
-            let record = just('{')
-                .ignore_then(fields.clone())
-                .then_ignore(just('}'))
+            let record = fields
+                .clone()
+                .delimited_by(just('{'), just('}'))
                 .map(Self::record);
 
-            let variant = just('<')
-                .ignore_then(fields.clone())
-                .then_ignore(just('>'))
+            let variant = fields
+                .clone()
+                .delimited_by(just('<'), just('>'))
                 .map(Self::variant);
 
             let parens = ty.clone().delimited_by(just('('), just(')'));
@@ -99,16 +99,13 @@ impl Term {
                     .collect::<Vec<_>>()
             });
 
-            let record = just('{')
-                .ignore_then(fields)
-                .then_ignore(just('}'))
-                .map(Self::record);
+            let record = fields.delimited_by(just('{'), just('}')).map(Self::record);
 
-            let tag = just('<')
-                .ignore_then(text::ident().padded())
+            let tag = text::ident()
+                .padded()
                 .then_ignore(just('='))
                 .then(term.clone())
-                .then_ignore(just('>'))
+                .delimited_by(just('<'), just('>'))
                 .then_ignore(text::keyword("as").padded())
                 .then(Ty::parser())
                 .map(|((l, t1), t2)| Self::tag(l, t1, t2));
@@ -219,11 +216,11 @@ impl Term {
                     Self::let_(x.clone(), Self::fix(Self::abs(x, ty, t1)), t2)
                 });
 
-            let cases = just('<')
-                .ignore_then(text::ident().padded())
+            let cases = text::ident()
+                .padded()
                 .then_ignore(just('='))
                 .then(Self::ident().padded())
-                .then_ignore(just('>'))
+                .delimited_by(just('<'), just('>'))
                 .then_ignore(just("==>").padded())
                 .then(term.clone())
                 .padded()
