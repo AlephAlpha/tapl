@@ -43,6 +43,12 @@ pub enum Kind {
     Arr(Rc<Self>, Rc<Self>),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Variance {
+    Invariant,
+    Covariant,
+}
+
 #[derive(Clone, Debug, PartialEq, RcTerm)]
 pub enum Ty<V = String> {
     Var(#[rc_term(into)] V),
@@ -50,7 +56,7 @@ pub enum Ty<V = String> {
     App(Rc<Self>, Rc<Self>),
     All(#[rc_term(into)] String, Rc<Self>, Rc<Self>),
     String,
-    Record(#[rc_term(into)] Vec<(String, Rc<Self>)>),
+    Record(#[rc_term(into)] Vec<(String, Variance, Rc<Self>)>),
     Top,
     Arr(Rc<Self>, Rc<Self>),
     Some(#[rc_term(into)] String, Rc<Self>, Rc<Self>),
@@ -72,7 +78,7 @@ pub enum Term<V = String> {
     TAbs(#[rc_term(into)] String, Rc<Ty<V>>, Rc<Self>),
     TApp(Rc<Self>, Rc<Ty<V>>),
     String(#[rc_term(into)] String),
-    Record(#[rc_term(into)] Vec<(String, Rc<Self>)>),
+    Record(#[rc_term(into)] Vec<(String, Variance, Rc<Self>)>),
     Proj(Rc<Self>, #[rc_term(into)] String),
     Pack(Rc<Ty<V>>, Rc<Self>, Rc<Ty<V>>),
     Unpack(
@@ -94,6 +100,7 @@ pub enum Term<V = String> {
     Let(#[rc_term(into)] String, Rc<Self>, Rc<Self>),
     Inert(Rc<Ty<V>>),
     Fix(Rc<Self>),
+    Update(Rc<Self>, #[rc_term(into)] String, Rc<Self>),
 }
 
 pub type DeBruijnTerm = Term<usize>;
@@ -172,7 +179,10 @@ impl<V: Display> Ty<V> {
             Self::String => write!(f, "String"),
             Self::Record(fields) => {
                 write!(f, "{{")?;
-                for (i, (l, ty)) in fields.iter().enumerate() {
+                for (i, (l, var, ty)) in fields.iter().enumerate() {
+                    if *var == Variance::Invariant {
+                        write!(f, "#")?;
+                    }
                     if i > 0 {
                         write!(f, ", ")?;
                     }
@@ -253,7 +263,10 @@ impl<V: Display> Term<V> {
             Self::String(s) => write!(f, "{s:?}"),
             Self::Record(fields) => {
                 write!(f, "{{")?;
-                for (i, (l, term)) in fields.iter().enumerate() {
+                for (i, (l, var, term)) in fields.iter().enumerate() {
+                    if *var == Variance::Invariant {
+                        write!(f, "#")?;
+                    }
                     if i > 0 {
                         write!(f, ", ")?;
                     }
@@ -361,6 +374,9 @@ impl<V: Display> Display for Term<V> {
             Self::Let(x, t1, t2) => {
                 write!(f, "let {x} = {t1} in {t2}")
             }
+            Self::Update(t1, l, t2) => {
+                write!(f, "{t1} <- {l} = {t2}")
+            }
             _ => self.fmt_app(f),
         }
     }
@@ -416,7 +432,9 @@ impl DeBruijnTy {
             Self::Record(fields) => Self::record(
                 fields
                     .iter()
-                    .map(|(label, ty)| Ok((label.clone(), ty.map_vars_walk(cutoff, on_var)?)))
+                    .map(|(label, var, ty)| {
+                        Ok((label.clone(), *var, ty.map_vars_walk(cutoff, on_var)?))
+                    })
                     .collect::<Result<Vec<_>>>()?,
             ),
             Self::Top => Self::top(),
@@ -510,8 +528,12 @@ impl DeBruijnTerm {
             Self::Record(fields) => Self::record(
                 fields
                     .iter()
-                    .map(|(label, term)| {
-                        Ok((label.clone(), term.map_vars_walk(cutoff, on_var, on_type)?))
+                    .map(|(label, var, term)| {
+                        Ok((
+                            label.clone(),
+                            *var,
+                            term.map_vars_walk(cutoff, on_var, on_type)?,
+                        ))
                     })
                     .collect::<Result<Vec<_>>>()?,
             ),
@@ -550,6 +572,11 @@ impl DeBruijnTerm {
                 t2.map_vars_walk(cutoff, on_var, on_type)?,
             ),
             Self::Fix(t) => Self::fix(t.map_vars_walk(cutoff, on_var, on_type)?),
+            Self::Update(t1, l, t2) => Self::update(
+                t1.map_vars_walk(cutoff, on_var, on_type)?,
+                l.clone(),
+                t2.map_vars_walk(cutoff, on_var, on_type)?,
+            ),
         })
     }
 
@@ -648,7 +675,7 @@ impl DeBruijnTy {
             Self::Record(fields) => Ok(Ty::record(
                 fields
                     .iter()
-                    .map(|(label, ty)| Ok((label.clone(), ty.to_named(ctx)?)))
+                    .map(|(label, var, ty)| Ok((label.clone(), *var, ty.to_named(ctx)?)))
                     .collect::<Result<Vec<_>>>()?,
             )),
             Self::Top => Ok(Ty::top()),
@@ -694,7 +721,7 @@ impl Ty {
             Self::Record(fields) => Ok(DeBruijnTy::record(
                 fields
                     .iter()
-                    .map(|(label, ty)| Ok((label.clone(), ty.to_de_bruijn(ctx)?)))
+                    .map(|(label, var, ty)| Ok((label.clone(), *var, ty.to_de_bruijn(ctx)?)))
                     .collect::<Result<Vec<_>>>()?,
             )),
             Self::Top => Ok(DeBruijnTy::top()),
@@ -743,7 +770,7 @@ impl DeBruijnTerm {
             Self::Record(fields) => Ok(Term::record(
                 fields
                     .iter()
-                    .map(|(label, term)| Ok((label.clone(), term.to_named(ctx)?)))
+                    .map(|(label, var, term)| Ok((label.clone(), *var, term.to_named(ctx)?)))
                     .collect::<Result<Vec<_>>>()?,
             )),
             Self::Proj(t, l) => Ok(Term::proj(t.to_named(ctx)?, l.clone())),
@@ -783,6 +810,11 @@ impl DeBruijnTerm {
             )),
             Self::Inert(ty) => Ok(Term::inert(ty.to_named(ctx)?)),
             Self::Fix(t) => Ok(Term::fix(t.to_named(ctx)?)),
+            Self::Update(t1, l, t2) => Ok(Term::update(
+                t1.to_named(ctx)?,
+                l.clone(),
+                t2.to_named(ctx)?,
+            )),
         }
     }
 }
@@ -817,7 +849,7 @@ impl Term {
             Self::Record(fields) => Ok(DeBruijnTerm::record(
                 fields
                     .iter()
-                    .map(|(label, term)| Ok((label.clone(), term.to_de_bruijn(ctx)?)))
+                    .map(|(label, var, term)| Ok((label.clone(), *var, term.to_de_bruijn(ctx)?)))
                     .collect::<Result<Vec<_>>>()?,
             )),
             Self::Proj(t, l) => Ok(DeBruijnTerm::proj(t.to_de_bruijn(ctx)?, l.clone())),
@@ -858,6 +890,11 @@ impl Term {
             )),
             Self::Inert(ty) => Ok(DeBruijnTerm::inert(ty.to_de_bruijn(ctx)?)),
             Self::Fix(t) => Ok(DeBruijnTerm::fix(t.to_de_bruijn(ctx)?)),
+            Self::Update(t1, l, t2) => Ok(DeBruijnTerm::update(
+                t1.to_de_bruijn(ctx)?,
+                l.clone(),
+                t2.to_de_bruijn(ctx)?,
+            )),
         }
     }
 }

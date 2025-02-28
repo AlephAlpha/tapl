@@ -128,7 +128,7 @@ impl DeBruijnTerm {
                 }
             }
             Self::Proj(t, l) => match t.as_ref() {
-                Self::Record(fields) => {
+                Self::Record(fields) if t.is_val(ctx) => {
                     if let Some((_, t)) = fields.iter().find(|(l_, _)| l_ == l) {
                         Ok(t.clone())
                     } else {

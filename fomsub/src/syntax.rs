@@ -349,7 +349,7 @@ impl BindingShift for DeBruijnBinding {
         match self {
             Self::Name => Ok(Self::Name),
             Self::Var(ty) => Ok(Self::Var(ty.shift(d)?)),
-            Self::TyVar(kn) => Ok(Self::TyVar(kn.clone())),
+            Self::TyVar(ty) => Ok(Self::TyVar(ty.shift(d)?)),
         }
     }
 }

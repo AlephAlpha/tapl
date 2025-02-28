@@ -23,6 +23,7 @@ members = [
     "fullomega",
     "fullfomsub",
     "fomsub",
+    "fullupdate",
 ]
 resolver = "3"
 

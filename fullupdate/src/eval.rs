@@ -1,4 +1,6 @@
-use crate::syntax::{Binding, Context, DeBruijnBinding, DeBruijnTerm, DeBruijnTy, Kind, Term, Ty};
+use crate::syntax::{
+    Binding, Context, DeBruijnBinding, DeBruijnTerm, DeBruijnTy, Kind, Term, Ty, Variance,
+};
 use std::rc::Rc;
 use util::error::{Error, Result};
 
@@ -65,9 +67,11 @@ impl DeBruijnTy {
             }
             (Self::Record(fields), Self::Record(fields_)) => {
                 fields.len() == fields_.len()
-                    && fields
-                        .iter()
-                        .all(|(l, ty)| fields_.iter().any(|(l_, ty_)| l == l_ && ty.eqv(ty_, ctx)))
+                    && fields.iter().all(|(l, var, ty)| {
+                        fields_
+                            .iter()
+                            .any(|(l_, var_, ty_)| l == l_ && var == var_ && ty.eqv(ty_, ctx))
+                    })
             }
             (Self::Some(x, ty1, ty2), Self::Some(_, kn_, ty_)) => {
                 ty1 == kn_ && ctx.with_name(x.clone(), |ctx| ty2.eqv(ty_, ctx))
@@ -130,7 +134,7 @@ impl DeBruijnTy {
                     }
                 })
             }
-            Self::Record(fields) => fields.iter().try_fold(Kind::star(), |acc, (_, ty)| {
+            Self::Record(fields) => fields.iter().try_fold(Kind::star(), |acc, (_, _, ty)| {
                 if matches!(ty.kind_of(ctx)?.as_ref(), Kind::Star) {
                     Ok(acc)
                 } else {
@@ -173,9 +177,17 @@ impl DeBruijnTy {
             (Self::Arr(ty1, ty2), Self::Arr(ty1_, ty2_)) => {
                 ty1_.subtype(ty1, ctx) && ty2.subtype(ty2_, ctx)
             }
-            (Self::Record(fields), Self::Record(fields_)) => fields_
-                .iter()
-                .all(|(l_, ty_)| fields.iter().any(|(l, ty)| l_ == l && ty.subtype(ty_, ctx))),
+            (Self::Record(fields), Self::Record(fields_)) => {
+                fields_.iter().all(|(l_, var_, ty_)| {
+                    fields.iter().any(|(l, var, ty)| {
+                        l_ == l
+                            && match var_ {
+                                Variance::Covariant => ty.subtype(ty_, ctx),
+                                Variance::Invariant => var == var_ && ty.eqv(ty_, ctx),
+                            }
+                    })
+                })
+            }
             (Self::Some(x, ty1, ty2), Self::Some(_, ty1_, ty2_)) => {
                 ty1.subtype(ty1_, ctx)
                     && ty1_.subtype(ty1, ctx)
@@ -221,11 +233,29 @@ impl DeBruijnTy {
             (Self::Record(fields), Self::Record(fields_)) => {
                 let common_fields = fields
                     .iter()
-                    .filter_map(|(l, ty)| {
+                    .filter_map(|(l, var, ty)| {
                         fields_
                             .iter()
-                            .find(|(l_, _)| l == l_)
-                            .map(|(_, ty_)| (l.clone(), ty.join(ty_, ctx)))
+                            .find(|(l_, _, _)| l == l_)
+                            .map(|(_, var_, ty_)| {
+                                let v = match (var, var_) {
+                                    (Variance::Covariant, Variance::Covariant) => {
+                                        Variance::Covariant
+                                    }
+                                    (Variance::Covariant, Variance::Invariant)
+                                    | (Variance::Invariant, Variance::Covariant) => {
+                                        Variance::Invariant
+                                    }
+                                    (Variance::Invariant, Variance::Invariant) => {
+                                        if ty.eqv(ty_, ctx) {
+                                            Variance::Invariant
+                                        } else {
+                                            Variance::Covariant
+                                        }
+                                    }
+                                };
+                                (l.clone(), v, ty.join(ty_, ctx))
+                            })
                     })
                     .collect::<Vec<_>>();
                 Self::record(common_fields)
@@ -264,11 +294,26 @@ impl DeBruijnTy {
             (Self::Record(fields), Self::Record(fields_)) => {
                 let common_fields = fields
                     .iter()
-                    .filter_map(|(l, ty)| {
+                    .filter_map(|(l, var, ty)| {
                         fields_
                             .iter()
-                            .find(|(l_, _)| l == l_)
-                            .map(|(_, ty_)| Some((l.clone(), ty.meet(ty_, ctx)?)))
+                            .find(|(l_, _, _)| l == l_)
+                            .map(|(_, var_, ty_)| match (var, var_) {
+                                (Variance::Covariant, Variance::Covariant) => {
+                                    Some((l.clone(), Variance::Covariant, ty.meet(ty_, ctx)?))
+                                }
+                                (Variance::Covariant, Variance::Invariant)
+                                | (Variance::Invariant, Variance::Covariant) => {
+                                    Some((l.clone(), Variance::Invariant, ty.meet(ty_, ctx)?))
+                                }
+                                (Variance::Invariant, Variance::Invariant) => {
+                                    if ty.eqv(ty_, ctx) {
+                                        Some((l.clone(), Variance::Invariant, ty.clone()))
+                                    } else {
+                                        None
+                                    }
+                                }
+                            })
                     })
                     .collect::<Option<Vec<_>>>()?;
 
@@ -277,13 +322,13 @@ impl DeBruijnTy {
                     .chain(
                         fields
                             .iter()
-                            .filter(|(l, _)| !fields_.iter().any(|(l_, _)| l == l_))
+                            .filter(|(l, _, _)| !fields_.iter().any(|(l_, _, _)| l == l_))
                             .cloned(),
                     )
                     .chain(
                         fields_
                             .iter()
-                            .filter(|(l, _)| !fields.iter().any(|(l_, _)| l == l_))
+                            .filter(|(l, _, _)| !fields.iter().any(|(l_, _, _)| l == l_))
                             .cloned(),
                     )
                     .collect::<Vec<_>>();
@@ -312,7 +357,7 @@ impl DeBruijnTerm {
             | Self::Unit
             | Self::Float(_) => true,
             Self::Pack(_, t, _) => t.is_val(_ctx),
-            Self::Record(fields) => fields.iter().all(|(_, t)| t.is_val(_ctx)),
+            Self::Record(fields) => fields.iter().all(|(_, _, t)| t.is_val(_ctx)),
             t => t.is_numeric_val(),
         }
     }
@@ -341,9 +386,9 @@ impl DeBruijnTerm {
                 _ => Ok(Self::t_app(t.eval1(ctx)?, ty.clone())),
             },
             Self::Record(fields) => {
-                if let Some(i) = fields.iter().position(|(_, t)| !t.is_val(ctx)) {
+                if let Some(i) = fields.iter().position(|(_, _, t)| !t.is_val(ctx)) {
                     let mut fields_ = fields.clone();
-                    fields_[i].1 = fields[i].1.eval1(ctx)?;
+                    fields_[i].2 = fields[i].2.eval1(ctx)?;
                     Ok(Self::record(fields_))
                 } else {
                     Err(Error::NoRuleApplies)
@@ -351,7 +396,7 @@ impl DeBruijnTerm {
             }
             Self::Proj(t, l) => match t.as_ref() {
                 Self::Record(fields) if t.is_val(ctx) => {
-                    if let Some((_, t)) = fields.iter().find(|(l_, _)| l_ == l) {
+                    if let Some((_, _, t)) = fields.iter().find(|(l_, _, _)| l_ == l) {
                         Ok(t.clone())
                     } else {
                         Err(Error::NoRuleApplies)
@@ -409,6 +454,23 @@ impl DeBruijnTerm {
                 Self::Abs(_, _, t1) => t1.subst_top(&Self::fix(t.clone())),
                 t if t.is_val(ctx) => Err(Error::NoRuleApplies),
                 _ => Ok(Self::fix(t.eval1(ctx)?)),
+            },
+            Self::Update(t1, l, t2) => match t1.as_ref() {
+                Self::Record(fields) if t1.is_val(ctx) => {
+                    if t2.is_val(ctx) {
+                        fields.iter().position(|(l_, _, _)| l_ == l).map_or(
+                            Err(Error::NoRuleApplies),
+                            |i| {
+                                let mut fields_ = fields.clone();
+                                fields_[i].2 = t2.clone();
+                                Ok(Self::record(fields_))
+                            },
+                        )
+                    } else {
+                        Ok(Self::update(t1.clone(), l.clone(), t2.eval1(ctx)?))
+                    }
+                }
+                _ => Ok(Self::update(t1.eval1(ctx)?, l.clone(), t2.clone())),
             },
             _ => Err(Error::NoRuleApplies),
         }
@@ -483,15 +545,15 @@ impl DeBruijnTerm {
             Self::Record(fields) => {
                 let fields = fields
                     .iter()
-                    .map(|(l, t)| t.type_of(ctx).map(|ty| (l.clone(), ty)))
+                    .map(|(l, var, t)| t.type_of(ctx).map(|ty| (l.clone(), *var, ty)))
                     .collect::<Result<Vec<_>>>()?;
                 Ok(Ty::record(fields))
             }
             Self::Proj(t, l) => match t.type_of(ctx)?.lcst(ctx).as_ref() {
                 Ty::Record(fields) => fields
                     .iter()
-                    .find(|(l_, _)| l_ == l)
-                    .map(|(_, ty)| ty.clone())
+                    .find(|(l_, _, _)| l_ == l)
+                    .map(|(_, _, ty)| ty.clone())
                     .ok_or_else(|| Error::TypeError(format!("label {l} not found"))),
                 _ => Err(Error::TypeError("expected record type".to_string())),
             },
@@ -600,6 +662,24 @@ impl DeBruijnTerm {
                     }
                 }
                 _ => Err(Error::TypeError("arrow type expected".to_string())),
+            },
+            Self::Update(t1, l, t2) => match t1.type_of(ctx)?.lcst(ctx).as_ref() {
+                Ty::Record(fields) => fields
+                    .iter()
+                    .find(|(l_, _, _)| l_ == l)
+                    .ok_or_else(|| Error::TypeError(format!("label {l} not found")))
+                    .and_then(|(_, var, ty)| {
+                        if *var != Variance::Invariant {
+                            Err(Error::TypeError("field not invariant".to_string()))
+                        } else if t2.type_of(ctx)?.subtype(ty, ctx) {
+                            t1.type_of(ctx)
+                        } else {
+                            Err(Error::TypeError(
+                                "type of new field value doesn't match".to_string(),
+                            ))
+                        }
+                    }),
+                _ => Err(Error::TypeError("expected record type".to_string())),
             },
         }
     }
