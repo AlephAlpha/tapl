@@ -360,9 +360,9 @@ impl Binding {
                     .map(|k| k.unwrap_or_else(Kind::star)),
             )
             .repeated()
-            .then_ignore(just('='))
-            .then(Ty::parser())
-            .foldr(|(x, kn), ty| Ty::abs(x, kn, ty))
+            .foldr(just('=').ignore_then(Ty::parser()), |(x, kn), ty| {
+                Ty::abs(x, kn, ty)
+            })
             .map(|ty| Self::TyAbb(ty, None));
 
         ty_abb.or(ty_var).padded()
