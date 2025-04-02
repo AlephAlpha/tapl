@@ -1,9 +1,10 @@
 use crate::syntax::{Command, Term};
 use chumsky::prelude::*;
 use std::rc::Rc;
+use util::parser::ParserError;
 
 impl Term {
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         recursive(|term| {
             let true_ = text::keyword("true").to(Self::true_());
             let false_ = text::keyword("false").to(Self::false_());
@@ -36,17 +37,17 @@ impl Term {
                 .then(term.clone())
                 .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
-            app.or(if_).padded()
+            app.or(if_).padded().labelled("term")
         })
     }
 }
 
 impl Command {
-    pub fn parse(input: &str) -> Result<Self, Vec<Simple<char>>> {
-        Self::parser().parse(input)
+    pub fn parse(input: &str) -> Result<Self, Vec<Rich<char>>> {
+        Self::parser().parse(input).into_result()
     }
 
-    fn parser() -> impl Parser<char, Self, Error = Simple<char>> {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let term = Term::parser().map(Self::Eval);
         let eval1 = just(':')
             .then(text::keyword("eval1"))

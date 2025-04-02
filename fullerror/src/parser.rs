@@ -1,13 +1,14 @@
 use crate::syntax::{Binding, Command, KEYWORDS, Term, Ty};
 use chumsky::prelude::*;
 use std::rc::Rc;
+use util::parser::ParserError;
 
 impl Ty {
-    fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    fn ident<'src>() -> impl Parser<'src, &'src str, String, ParserError<'src>> + Clone {
         util::parser::ty_ident(KEYWORDS.iter().copied())
     }
 
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         recursive(|ty| {
             let var = Self::ident().map(Self::var);
 
@@ -23,24 +24,24 @@ impl Ty {
                 .clone()
                 .then_ignore(just("->"))
                 .repeated()
-                .then(atom.clone())
-                .foldr(Self::arr);
+                .foldr(atom.clone(), Self::arr);
 
-            arrow.padded()
+            arrow.padded().labelled("type")
         })
     }
 }
 
 impl Term {
-    fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    fn ident<'src>() -> impl Parser<'src, &'src str, String, ParserError<'src>> + Clone {
         util::parser::var_ident(KEYWORDS.iter().copied())
     }
 
-    fn ident_or_underscore() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    fn ident_or_underscore<'src>() -> impl Parser<'src, &'src str, String, ParserError<'src>> + Clone
+    {
         Self::ident().or(text::keyword("_").to("_".to_string()))
     }
 
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         recursive(|term| {
             let var = Self::ident().map(Self::var);
 
@@ -52,7 +53,7 @@ impl Term {
 
             let atom = choice((true_, false_, error, parens, var)).padded();
 
-            let app = atom.clone().then(atom.repeated()).foldl(Self::app);
+            let app = atom.clone().foldl(atom.repeated(), Self::app);
 
             let abs = text::keyword("lambda")
                 .ignore_then(Self::ident_or_underscore().padded())
@@ -76,13 +77,13 @@ impl Term {
                 .then(term.clone())
                 .map(|(t1, t2)| Self::try_(t1, t2));
 
-            choice((abs, if_, try_, app)).padded()
+            choice((abs, if_, try_, app)).padded().labelled("term")
         })
     }
 }
 
 impl Binding {
-    fn parser() -> impl Parser<char, Self, Error = Simple<char>> {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let name = empty().to(Self::Name);
         let term = just('=')
             .ignore_then(Term::parser())
@@ -92,7 +93,7 @@ impl Binding {
         choice((term, var, name)).padded()
     }
 
-    fn ty_parser() -> impl Parser<char, Self, Error = Simple<char>> {
+    fn ty_parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let ty_var = empty().to(Self::TyVar);
         let ty_abb = just('=').ignore_then(Ty::parser()).map(Self::TyAbb);
 
@@ -101,11 +102,11 @@ impl Binding {
 }
 
 impl Command {
-    pub fn parse(input: &str) -> Result<Self, Vec<Simple<char>>> {
-        Self::parser().parse(input)
+    pub fn parse(input: &str) -> Result<Self, Vec<Rich<char>>> {
+        Self::parser().parse(input).into_result()
     }
 
-    fn parser() -> impl Parser<char, Self, Error = Simple<char>> {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let term = Term::parser().map(Self::Eval);
         let eval1 = just(':')
             .then(text::keyword("eval1"))

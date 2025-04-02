@@ -1,9 +1,10 @@
 use crate::syntax::{Binding, Command, KEYWORDS, Kind, Term, Ty};
 use chumsky::prelude::*;
 use std::rc::Rc;
+use util::parser::ParserError;
 
 impl Kind {
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         recursive(|kind| {
             let star = just('*').to(Self::star());
 
@@ -15,20 +16,19 @@ impl Kind {
                 .clone()
                 .then_ignore(just("=>"))
                 .repeated()
-                .then(atom)
-                .foldr(Self::arr);
+                .foldr(atom, Self::arr);
 
-            arrow.padded()
+            arrow.padded().labelled("kind")
         })
     }
 }
 
 impl Ty {
-    fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    fn ident<'src>() -> impl Parser<'src, &'src str, String, ParserError<'src>> + Clone {
         util::parser::ty_ident(KEYWORDS.iter().copied())
     }
 
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         recursive(|ty| {
             let var = Self::ident().map(Self::var);
 
@@ -46,14 +46,13 @@ impl Ty {
 
             let atom = choice((top, parens, var)).padded();
 
-            let app = atom.clone().then(atom.clone().repeated()).foldl(Self::app);
+            let app = atom.clone().foldl(atom.clone().repeated(), Self::app);
 
             let arrow = app
                 .clone()
                 .then_ignore(just("->"))
                 .repeated()
-                .then(app)
-                .foldr(Self::arr);
+                .foldr(app, Self::arr);
 
             let abs = text::keyword("lambda")
                 .ignore_then(Self::ident().padded())
@@ -79,21 +78,22 @@ impl Ty {
                 .then(ty.clone())
                 .map(|((x, t1), t2)| Self::all(x, t1, t2));
 
-            choice((arrow, abs, all)).padded()
+            choice((arrow, abs, all)).padded().labelled("type")
         })
     }
 }
 
 impl Term {
-    fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    fn ident<'src>() -> impl Parser<'src, &'src str, String, ParserError<'src>> + Clone {
         util::parser::var_ident(KEYWORDS.iter().copied())
     }
 
-    fn ident_or_underscore() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    fn ident_or_underscore<'src>() -> impl Parser<'src, &'src str, String, ParserError<'src>> + Clone
+    {
         Self::ident().or(text::keyword("_").to("_".to_string()))
     }
 
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         recursive(|term| {
             let var = Self::ident().map(Self::var);
 
@@ -111,7 +111,7 @@ impl Term {
                 .padded()
                 .map(Arg::Ty));
 
-            let app = atom.then(arg.repeated()).foldl(|t, arg| match arg {
+            let app = atom.foldl(arg.repeated(), |t, arg| match arg {
                 Arg::Path(p) => Self::app(t, p),
                 Arg::Ty(ty) => Self::t_app(t, ty),
             });
@@ -136,20 +136,20 @@ impl Term {
                 .then(term.clone())
                 .map(|((x, ty), t)| Self::t_abs(x, ty, t));
 
-            choice((abs, t_abs, app)).padded()
+            choice((abs, t_abs, app)).padded().labelled("term")
         })
     }
 }
 
 impl Binding {
-    fn parser() -> impl Parser<char, Self, Error = Simple<char>> {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let name = empty().to(Self::Name);
         let var = just(':').ignore_then(Ty::parser()).map(Self::Var);
 
         var.or(name).padded()
     }
 
-    fn ty_parser() -> impl Parser<char, Self, Error = Simple<char>> {
+    fn ty_parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let ty_var = just("<:")
             .ignore_then(Ty::parser())
             .or(just("::")
@@ -163,11 +163,11 @@ impl Binding {
 }
 
 impl Command {
-    pub fn parse(input: &str) -> Result<Self, Vec<Simple<char>>> {
-        Self::parser().parse(input)
+    pub fn parse(input: &str) -> Result<Self, Vec<Rich<char>>> {
+        Self::parser().parse(input).into_result()
     }
 
-    fn parser() -> impl Parser<char, Self, Error = Simple<char>> {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let term = Term::parser().map(Self::Eval);
         let eval1 = just(':')
             .then(text::keyword("eval1"))

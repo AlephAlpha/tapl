@@ -1,9 +1,10 @@
 use crate::syntax::{Binding, Command, KEYWORDS, Term, Ty};
 use chumsky::prelude::*;
 use std::rc::Rc;
+use util::parser::ParserError;
 
 impl Ty {
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         recursive(|ty| {
             let bool = text::keyword("Bool").to(Self::bool());
 
@@ -15,24 +16,24 @@ impl Ty {
                 .clone()
                 .then_ignore(just("->"))
                 .repeated()
-                .then(atom)
-                .foldr(Self::arr);
+                .foldr(atom, Self::arr);
 
-            arrow.padded()
+            arrow.padded().labelled("type")
         })
     }
 }
 
 impl Term {
-    fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    fn ident<'src>() -> impl Parser<'src, &'src str, String, ParserError<'src>> + Clone {
         util::parser::var_ident(KEYWORDS.iter().copied())
     }
 
-    fn ident_or_underscore() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    fn ident_or_underscore<'src>() -> impl Parser<'src, &'src str, String, ParserError<'src>> + Clone
+    {
         Self::ident().or(text::keyword("_").to("_".to_string()))
     }
 
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         recursive(|term| {
             let var = Self::ident().map(Self::var);
 
@@ -41,12 +42,9 @@ impl Term {
 
             let parens = term.clone().delimited_by(just('('), just(')'));
 
-            let atom = choice((true_, false_, parens, var));
+            let atom = choice((true_, false_, parens, var)).padded();
 
-            let app = atom
-                .clone()
-                .then(atom.clone().padded().repeated())
-                .foldl(Self::app);
+            let app = atom.clone().foldl(atom.clone().repeated(), Self::app);
 
             let if_ = text::keyword("if")
                 .ignore_then(term.clone())
@@ -64,13 +62,13 @@ impl Term {
                 .then(term.clone())
                 .map(|((x, ty), t)| Self::abs(x, ty, t));
 
-            choice((if_, abs, app)).padded()
+            choice((if_, abs, app)).padded().labelled("term")
         })
     }
 }
 
 impl Binding {
-    fn parser() -> impl Parser<char, Self, Error = Simple<char>> {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let name = empty().to(Self::Name);
         let var = just(':').ignore_then(Ty::parser()).map(Self::Var);
 
@@ -79,11 +77,11 @@ impl Binding {
 }
 
 impl Command {
-    pub fn parse(input: &str) -> Result<Self, Vec<Simple<char>>> {
-        Self::parser().parse(input)
+    pub fn parse(input: &str) -> Result<Self, Vec<Rich<char>>> {
+        Self::parser().parse(input).into_result()
     }
 
-    fn parser() -> impl Parser<char, Self, Error = Simple<char>> {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let term = Term::parser().map(Self::Eval);
         let eval1 = just(':')
             .then(text::keyword("eval1"))

@@ -1,17 +1,19 @@
 use crate::syntax::{Binding, Command, KEYWORDS, Term};
 use chumsky::prelude::*;
 use std::rc::Rc;
+use util::parser::ParserError;
 
 impl Term {
-    fn ident() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    fn ident<'src>() -> impl Parser<'src, &'src str, String, ParserError<'src>> + Clone {
         util::parser::var_ident(KEYWORDS.iter().copied())
     }
 
-    fn ident_or_underscore() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    fn ident_or_underscore<'src>() -> impl Parser<'src, &'src str, String, ParserError<'src>> + Clone
+    {
         Self::ident().or(text::keyword("_").to("_".to_string()))
     }
 
-    fn parser() -> impl Parser<char, Rc<Self>, Error = Simple<char>> + Clone {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         recursive(|term| {
             let var = Self::ident().map(Self::var);
 
@@ -28,13 +30,18 @@ impl Term {
                 .or_not()
                 .then(term.clone());
 
-            let fields = field.separated_by(just(',')).map(|fields| {
-                fields
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, (k, v))| (k.unwrap_or_else(|| i.to_string()), v))
-                    .collect::<Vec<_>>()
-            });
+            let fields = field
+                .separated_by(just(','))
+                .enumerate()
+                .collect::<Vec<_>>()
+                .map(|fields| {
+                    fields
+                        .into_iter()
+                        .map(|(i, (k, v))| {
+                            (k.map(str::to_owned).unwrap_or_else(|| i.to_string()), v)
+                        })
+                        .collect::<Vec<_>>()
+                });
 
             let record = fields.delimited_by(just('{'), just('}')).map(Self::record);
 
@@ -44,12 +51,12 @@ impl Term {
 
             let path = atom
                 .clone()
-                .then(
+                .foldl(
                     just('.')
                         .ignore_then(text::ident().or(text::int(10)).padded())
                         .repeated(),
+                    Self::proj,
                 )
-                .foldl(Self::proj)
                 .padded();
 
             let succ = text::keyword("succ")
@@ -70,8 +77,7 @@ impl Term {
                 .map(|(t1, t2)| Self::times_float(t1, t2));
 
             let app = choice((succ, pred, is_zero, times_float, path.clone()))
-                .then(path.repeated())
-                .foldl(Self::app);
+                .foldl(path.repeated(), Self::app);
 
             let if_ = text::keyword("if")
                 .ignore_then(term.clone())
@@ -95,13 +101,13 @@ impl Term {
                 .then(term.clone())
                 .map(|((x, t1), t2)| Self::let_(x, t1, t2));
 
-            choice((if_, abs, let_, app)).padded()
+            choice((if_, abs, let_, app)).padded().labelled("term")
         })
     }
 }
 
 impl Binding {
-    fn parser() -> impl Parser<char, Self, Error = Simple<char>> {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let name = empty().to(Self::Name);
         let term = just('=').ignore_then(Term::parser()).map(Self::TermAbb);
 
@@ -110,11 +116,11 @@ impl Binding {
 }
 
 impl Command {
-    pub fn parse(input: &str) -> Result<Self, Vec<Simple<char>>> {
-        Self::parser().parse(input)
+    pub fn parse(input: &str) -> Result<Self, Vec<Rich<char>>> {
+        Self::parser().parse(input).into_result()
     }
 
-    fn parser() -> impl Parser<char, Self, Error = Simple<char>> {
+    fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let term = Term::parser().map(Self::Eval);
         let eval1 = just(':')
             .then(text::keyword("eval1"))
