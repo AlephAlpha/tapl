@@ -26,7 +26,7 @@ impl Ty {
                 .repeated()
                 .foldr(atom.clone(), Self::arr);
 
-            arrow.padded().labelled("type")
+            arrow.padded().labelled("type").boxed()
         })
     }
 }
@@ -77,7 +77,7 @@ impl Term {
                 .then(term.clone())
                 .map(|(t1, t2)| Self::try_(t1, t2));
 
-            choice((abs, if_, try_, app)).padded().labelled("term")
+            choice((abs, if_, try_, app)).padded().labelled("term").boxed()
         })
     }
 }

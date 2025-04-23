@@ -18,7 +18,7 @@ impl Kind {
                 .repeated()
                 .foldr(atom, Self::arr);
 
-            arrow.padded().labelled("kind")
+            arrow.padded().labelled("kind").boxed()
         })
     }
 }
@@ -121,7 +121,7 @@ impl Ty {
                 .then(ty.clone())
                 .map(|((x, t1), t2)| Self::all(x, t1, t2));
 
-            choice((arrow, abs, all)).padded().labelled("type")
+            choice((arrow, abs, all)).padded().labelled("type").boxed()
         })
     }
 }
@@ -330,6 +330,7 @@ impl Term {
             choice((abs, t_abs, unpack, let_, let_rec, if_, update, app))
                 .padded()
                 .labelled("term")
+                .boxed()
         })
     }
 }
@@ -399,8 +400,12 @@ impl Command {
             .then(text::keyword("type"))
             .ignore_then(Term::parser())
             .map(Self::Type);
+        let kind = just(':')
+            .then(text::keyword("kind"))
+            .ignore_then(Ty::parser())
+            .map(Self::Kind);
         let noop = text::whitespace().to(Self::Noop);
 
-        choice((eval1, eval, bind, type_, term, noop)).then_ignore(end())
+        choice((eval1, eval, bind, type_, kind, term, noop)).then_ignore(end())
     }
 }

@@ -64,7 +64,7 @@ impl Ty {
                 .then(ty.clone())
                 .map(|(x, ty)| Self::rec(x, ty));
 
-            arrow.or(rec).padded().labelled("type")
+            arrow.or(rec).padded().labelled("type").boxed()
         })
     }
 }
@@ -246,7 +246,7 @@ impl Term {
 
             choice((if_, abs, let_, let_rec, case, app))
                 .padded()
-                .labelled("term")
+                .labelled("term").boxed()
         })
     }
 }

@@ -54,6 +54,10 @@ fn main() -> Result<()> {
                                 Ok(ty) => println!("{t}: {ty}"),
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
+                            Command::Kind(ty) => match ty.kind_of(&mut ctx) {
+                                Ok(kn) => println!("{ty}:: {kn}"),
+                                Err(err) => eprintln!("Type error: {err}"),
+                            },
                             Command::Noop => {}
                         };
                     }

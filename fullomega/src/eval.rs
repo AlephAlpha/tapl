@@ -133,6 +133,12 @@ impl DeBruijnTy {
     }
 }
 
+impl Ty {
+    pub fn kind_of(&self, ctx: &mut Context) -> Result<Rc<Kind>> {
+        self.to_de_bruijn(ctx)?.kind_of(ctx)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Store {
     store: Vec<Rc<DeBruijnTerm>>,

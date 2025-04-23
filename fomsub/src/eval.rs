@@ -148,6 +148,12 @@ impl DeBruijnTy {
     }
 }
 
+impl Ty {
+    pub fn kind_of(&self, ctx: &mut Context) -> Result<Rc<Kind>> {
+        self.to_de_bruijn(ctx)?.kind_of(ctx)
+    }
+}
+
 impl DeBruijnTerm {
     const fn is_val(&self, _ctx: &Context) -> bool {
         matches!(self, Self::TAbs(_, _, _) | Self::Abs(_, _, _))

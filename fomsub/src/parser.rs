@@ -18,7 +18,7 @@ impl Kind {
                 .repeated()
                 .foldr(atom, Self::arr);
 
-            arrow.padded().labelled("kind")
+            arrow.padded().labelled("kind").boxed()
         })
     }
 }
@@ -78,7 +78,7 @@ impl Ty {
                 .then(ty.clone())
                 .map(|((x, t1), t2)| Self::all(x, t1, t2));
 
-            choice((arrow, abs, all)).padded().labelled("type")
+            choice((arrow, abs, all)).padded().labelled("type").boxed()
         })
     }
 }
@@ -136,7 +136,7 @@ impl Term {
                 .then(term.clone())
                 .map(|((x, ty), t)| Self::t_abs(x, ty, t));
 
-            choice((abs, t_abs, app)).padded().labelled("term")
+            choice((abs, t_abs, app)).padded().labelled("term").boxed()
         })
     }
 }
@@ -190,8 +190,12 @@ impl Command {
             .then(text::keyword("type"))
             .ignore_then(Term::parser())
             .map(Self::Type);
+        let kind = just(':')
+            .then(text::keyword("kind"))
+            .ignore_then(Ty::parser())
+            .map(Self::Kind);
         let noop = text::whitespace().to(Self::Noop);
 
-        choice((eval1, eval, bind, type_, term, noop)).then_ignore(end())
+        choice((eval1, eval, bind, type_, kind, term, noop)).then_ignore(end())
     }
 }

@@ -37,7 +37,7 @@ impl Term {
                 .then(term.clone())
                 .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
-            app.or(if_).padded().labelled("term")
+            app.or(if_).padded().labelled("term").boxed()
         })
     }
 }

@@ -35,7 +35,7 @@ pub const KEYWORDS: &[&str] = &[
     "Some",
     "All",
 ];
-pub const COMMANDS: &[&str] = &["eval", "eval1", "bind", "type"];
+pub const COMMANDS: &[&str] = &["eval", "eval1", "bind", "type", "kind"];
 
 #[derive(Clone, Debug, PartialEq, RcTerm)]
 pub enum Kind {
@@ -385,6 +385,7 @@ pub enum Command {
     Eval(Rc<Term>),
     Bind(String, Binding),
     Type(Rc<Term>),
+    Kind(Rc<Ty>),
     Noop,
 }
 

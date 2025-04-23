@@ -342,6 +342,12 @@ impl DeBruijnTy {
     }
 }
 
+impl Ty {
+    pub fn kind_of(&self, ctx: &mut Context) -> Result<Rc<Kind>> {
+        self.to_de_bruijn(ctx)?.kind_of(ctx)
+    }
+}
+
 impl DeBruijnTerm {
     fn is_numeric_val(&self) -> bool {
         self.is_int()

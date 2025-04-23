@@ -24,7 +24,7 @@ impl Ty {
                 .repeated()
                 .foldr(atom, Self::arr);
 
-            arrow.padded().labelled("type")
+            arrow.padded().labelled("type").boxed()
         })
     }
 }
@@ -81,7 +81,7 @@ impl Term {
                 .then(term.clone())
                 .map(|((x, ty), t)| Self::abs(x, ty, t));
 
-            choice((if_, abs, app)).padded().labelled("term")
+            choice((if_, abs, app)).padded().labelled("term").boxed()
         })
     }
 }

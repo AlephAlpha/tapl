@@ -28,7 +28,7 @@ members = [
 resolver = "3"
 
 [workspace.dependencies]
-chumsky = "0.10.0"
+chumsky = "0.10.1"
 rustyline = { version = "15.0.0", features = ["derive"] }
 thiserror = "2.0.12"
 util = { path = "util" }

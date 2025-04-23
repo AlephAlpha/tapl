@@ -14,15 +14,18 @@ pub fn string<'src>() -> impl Parser<'src, &'src str, String, ParserError<'src>>
         .ignore_then(escape.or(none_of("\\\"")).repeated().collect())
         .then_ignore(just('"'))
         .labelled("string")
+        .boxed()
 }
 
 pub fn float<'src>() -> impl Parser<'src, &'src str, f64, ParserError<'src>> + Clone {
     text::int(10)
-        .then(just('.').then(text::digits(10)).or_not())
+        .then(just('.'))
+        .then(text::digits(10))
         .to_slice()
         .from_str::<f64>()
         .try_map(|s, span| s.map_err(|e| Rich::custom(span, e)))
         .labelled("float")
+        .boxed()
 }
 
 pub fn int<'src>() -> impl Parser<'src, &'src str, u64, ParserError<'src>> + Clone {
@@ -31,6 +34,7 @@ pub fn int<'src>() -> impl Parser<'src, &'src str, u64, ParserError<'src>> + Clo
         .from_str::<u64>()
         .try_map(|s, span| s.map_err(|e| Rich::custom(span, e)))
         .labelled("int")
+        .boxed()
 }
 
 fn ident<'src>(

@@ -75,6 +75,7 @@ impl Ty {
             choice((arrow, ref_, source, sink))
                 .padded()
                 .labelled("type")
+                .boxed()
         })
     }
 }
@@ -268,6 +269,7 @@ impl Term {
             choice((if_, abs, let_, let_rec, case, assign, app))
                 .padded()
                 .labelled("term")
+                .boxed()
         })
     }
 }

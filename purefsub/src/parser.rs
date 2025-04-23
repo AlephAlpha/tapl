@@ -36,7 +36,7 @@ impl Ty {
                 .then(ty.clone())
                 .map(|((x, t1), t2)| Self::all(x, t1, t2));
 
-            all.or(arrow).padded().labelled("type")
+            all.or(arrow).padded().labelled("type").boxed()
         })
     }
 }
@@ -94,7 +94,7 @@ impl Term {
                 .then(term.clone())
                 .map(|((x, ty), t)| Self::t_abs(x, ty, t));
 
-            choice((abs, t_abs, app)).padded().labelled("term")
+            choice((abs, t_abs, app)).padded().labelled("term").boxed()
         })
     }
 }

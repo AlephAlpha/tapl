@@ -79,7 +79,7 @@ impl Ty {
                 .then(ty.clone())
                 .map(|((x, t1), t2)| Self::all(x, t1, t2));
 
-            all.or(arrow).padded().labelled("type")
+            all.or(arrow).padded().labelled("type").boxed()
         })
     }
 }
@@ -275,7 +275,7 @@ impl Term {
 
             choice((if_, abs, t_abs, unpack, let_, let_rec, app))
                 .padded()
-                .labelled("term")
+                .labelled("term").boxed()
         })
     }
 }

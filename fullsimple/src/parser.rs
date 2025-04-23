@@ -58,7 +58,7 @@ impl Ty {
                 .repeated()
                 .foldr(atom, Self::arr);
 
-            arrow.padded().labelled("type")
+            arrow.padded().labelled("type").boxed()
         })
     }
 }
@@ -224,6 +224,7 @@ impl Term {
             choice((if_, abs, let_, let_rec, case, app))
                 .padded()
                 .labelled("term")
+                .boxed()
         })
     }
 }
