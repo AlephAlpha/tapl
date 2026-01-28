@@ -8,8 +8,8 @@ proc-macro = true
 
 [dependencies]
 check_keyword = "0.4.1"
-convert_case = "0.8.0"
-darling = "0.20.11"
-proc-macro2 = "1.0.95"
-quote = "1.0.40"
-syn = { version = "2.0.100", features = ["full"] }
+convert_case = "0.10.0"
+darling = "0.23.0"
+proc-macro2 = "1.0.106"
+quote = "1.0.44"
+syn = { version = "2.0.114", features = ["full"] }

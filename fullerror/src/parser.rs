@@ -77,7 +77,10 @@ impl Term {
                 .then(term.clone())
                 .map(|(t1, t2)| Self::try_(t1, t2));
 
-            choice((abs, if_, try_, app)).padded().labelled("term").boxed()
+            choice((abs, if_, try_, app))
+                .padded()
+                .labelled("term")
+                .boxed()
         })
     }
 }
@@ -102,7 +105,7 @@ impl Binding {
 }
 
 impl Command {
-    pub fn parse(input: &str) -> Result<Self, Vec<Rich<char>>> {
+    pub fn parse(input: &str) -> Result<Self, Vec<Rich<'_, char>>> {
         Self::parser().parse(input).into_result()
     }
 

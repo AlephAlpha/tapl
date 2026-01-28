@@ -163,7 +163,7 @@ impl Binding {
 }
 
 impl Command {
-    pub fn parse(input: &str) -> Result<Self, Vec<Rich<char>>> {
+    pub fn parse(input: &str) -> Result<Self, Vec<Rich<'_, char>>> {
         Self::parser().parse(input).into_result()
     }
 
