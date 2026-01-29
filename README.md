@@ -12,4 +12,4 @@ The REPL supports the following commands:
 - `:kind`: Find the kind of the type (for languages with kinds).
 - `:bind`: Bind a variable to an expression or a type.
 
-If no command is given, the expression is evaluated.
+If no command is given, it will either evaluate the input as an expression or bind it to a variable, depending on the input.

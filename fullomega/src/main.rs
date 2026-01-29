@@ -31,34 +31,33 @@ fn main() -> Result<()> {
                         match cmd {
                             Command::Eval(t) => match t.type_of(&mut ctx) {
                                 Ok(ty) => match t.eval(&mut ctx, &mut store) {
-                                    Ok(t_) => println!("{t_}: {ty}"),
+                                    Ok(t_) => println!("{t_} : {ty}"),
                                     Err(err) => eprintln!("Evaluation error: {err}"),
                                 },
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
                             Command::Eval1(t) => match t.type_of(&mut ctx) {
                                 Ok(ty) => match t.eval1(&mut ctx, &mut store) {
-                                    Ok(t_) => println!("{t_}: {ty}"),
+                                    Ok(t_) => println!("{t_} : {ty}"),
                                     Err(err) => eprintln!("Evaluation error: {err}"),
                                 },
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
-                            Command::Bind(x, b) => {
-                                match b.to_de_bruijn(&mut ctx).and_then(|b_| b_.check(&mut ctx)) {
-                                    Ok(b_) => {
-                                        ctx.add_binding(&x, b_.eval(&ctx, &mut store));
-                                        store.shift(1).unwrap();
-                                        rl.helper_mut().unwrap().add_keyword(x);
-                                    }
-                                    Err(err) => eprintln!("Binding error: {err}"),
+                            Command::Bind(x, b) => match b.check_and_eval(&mut ctx, &mut store) {
+                                Ok(b_) => {
+                                    b_.to_named(&mut ctx).unwrap().print_type(&x);
+                                    ctx.add_binding(&x, b_);
+                                    store.shift(1).unwrap();
+                                    rl.helper_mut().unwrap().add_keyword(x);
                                 }
-                            }
+                                Err(err) => eprintln!("Binding error: {err}"),
+                            },
                             Command::Type(t) => match t.type_of(&mut ctx) {
-                                Ok(ty) => println!("{t}: {ty}"),
+                                Ok(ty) => println!("{t} : {ty}"),
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
                             Command::Kind(ty) => match ty.kind_of(&mut ctx) {
-                                Ok(kn) => println!("{ty}:: {kn}"),
+                                Ok(kn) => println!("{ty} :: {kn}"),
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
                             Command::Noop => {}

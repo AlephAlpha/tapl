@@ -40,7 +40,7 @@ impl Ty {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    if l == &i.to_string() {
+                    if l == &(i + 1).to_string() {
                         write!(f, "{ty}")?;
                     } else {
                         write!(f, "{l}: {ty}")?;
@@ -80,7 +80,7 @@ impl<V: Display> Term<V> {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    if l == &i.to_string() {
+                    if l == &(i + 1).to_string() {
                         write!(f, "{term}")?;
                     } else {
                         write!(f, "{l}={term}")?;
@@ -131,6 +131,15 @@ pub enum Binding {
 }
 
 pub type Context = util::Context<Binding>;
+
+impl Binding {
+    pub fn print_type(&self, x: &str) {
+        match self {
+            Self::Var(ty) => println!("{x} : {ty}"),
+            _ => {}
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {

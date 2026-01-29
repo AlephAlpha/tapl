@@ -24,18 +24,18 @@ fn main() -> Result<()> {
                     Ok(cmd) => {
                         match cmd {
                             Command::Eval(t) => match t.type_of() {
-                                Ok(ty) => println!("{}: {ty}", t.eval()),
+                                Ok(ty) => println!("{} : {ty}", t.eval()),
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
                             Command::Eval1(t) => match t.type_of() {
                                 Ok(ty) => match t.eval1() {
-                                    Ok(t_) => println!("{t_}: {ty}"),
+                                    Ok(t_) => println!("{t_} : {ty}"),
                                     Err(err) => eprintln!("Evaluation error: {err}"),
                                 },
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
                             Command::Type(t) => match t.type_of() {
-                                Ok(ty) => println!("{t}: {ty}"),
+                                Ok(ty) => println!("{t} : {ty}"),
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
                             Command::Noop => {}

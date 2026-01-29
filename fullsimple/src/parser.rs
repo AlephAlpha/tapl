@@ -32,7 +32,10 @@ impl Ty {
                     fields
                         .into_iter()
                         .map(|(i, (k, v))| {
-                            (k.map(str::to_owned).unwrap_or_else(|| i.to_string()), v)
+                            (
+                                k.map(str::to_owned).unwrap_or_else(|| (i + 1).to_string()),
+                                v,
+                            )
                         })
                         .collect::<Vec<_>>()
                 });
@@ -99,7 +102,10 @@ impl Term {
                     fields
                         .into_iter()
                         .map(|(i, (k, v))| {
-                            (k.map(str::to_owned).unwrap_or_else(|| i.to_string()), v)
+                            (
+                                k.map(str::to_owned).unwrap_or_else(|| (i + 1).to_string()),
+                                v,
+                            )
                         })
                         .collect::<Vec<_>>()
                 });
@@ -254,30 +260,35 @@ impl Command {
     }
 
     fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
-        let term = Term::parser().map(Self::Eval);
         let eval1 = just(':')
             .then(text::keyword("eval1"))
             .ignore_then(Term::parser())
+            .then_ignore(end())
             .map(Self::Eval1);
         let eval = just(':')
             .then(text::keyword("eval"))
+            .or_not()
             .ignore_then(Term::parser())
+            .then_ignore(end())
             .map(Self::Eval);
         let bind = just(':')
             .then(text::keyword("bind"))
+            .or_not()
             .ignore_then(
                 Term::ident()
                     .padded()
                     .then(Binding::parser())
                     .or(Ty::ident().padded().then(Binding::ty_parser())),
             )
+            .then_ignore(end())
             .map(|(x, b)| Self::Bind(x, b));
         let type_ = just(':')
             .then(text::keyword("type"))
             .ignore_then(Term::parser())
+            .then_ignore(end())
             .map(Self::Type);
-        let noop = text::whitespace().to(Self::Noop);
+        let noop = text::whitespace().then_ignore(end()).to(Self::Noop);
 
-        choice((eval1, eval, bind, type_, term, noop)).then_ignore(end())
+        choice((eval1, eval, bind, type_, noop)).then_ignore(end())
     }
 }

@@ -125,7 +125,7 @@ impl<V: Display> Ty<V> {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    if l == &i.to_string() {
+                    if l == &(i + 1).to_string() {
                         write!(f, "{ty}")?;
                     } else {
                         write!(f, "{l}: {ty}")?;
@@ -170,7 +170,7 @@ impl<V: Display> Term<V> {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    if l == &i.to_string() {
+                    if l == &(i + 1).to_string() {
                         write!(f, "{term}")?;
                     } else {
                         write!(f, "{l}={term}")?;
@@ -269,6 +269,16 @@ pub enum Binding<V = String> {
 
 pub type DeBruijnBinding = Binding<usize>;
 pub type Context = util::Context<DeBruijnBinding>;
+
+impl<V: Display> Binding<V> {
+    pub fn print_type(&self, x: &str) {
+        match self {
+            Self::Var(ty) => println!("{x} : {ty}"),
+            Self::TermAbb(_, Some(ty)) => println!("{x} : {ty}"),
+            _ => {}
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -621,6 +631,21 @@ impl Binding {
             }
             Self::TyVar => Ok(DeBruijnBinding::TyVar),
             Self::TyAbb(ty) => Ok(DeBruijnBinding::TyAbb(ty.to_de_bruijn(ctx)?)),
+        }
+    }
+}
+
+impl DeBruijnBinding {
+    pub fn to_named(&self, ctx: &mut Context) -> Result<Binding> {
+        match self {
+            Self::Name => Ok(Binding::Name),
+            Self::Var(ty) => Ok(Binding::Var(ty.to_named(ctx)?)),
+            Self::TermAbb(t, ty) => Ok(Binding::TermAbb(
+                t.to_named(ctx)?,
+                ty.as_ref().map(|ty| ty.to_named(ctx)).transpose()?,
+            )),
+            Self::TyVar => Ok(Binding::TyVar),
+            Self::TyAbb(ty) => Ok(Binding::TyAbb(ty.to_named(ctx)?)),
         }
     }
 }

@@ -93,7 +93,7 @@ impl<V: Display> Term<V> {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    if l == &i.to_string() {
+                    if l == &(i + 1).to_string() {
                         write!(f, "{term}")?;
                     } else {
                         write!(f, "{l}={term}")?;

@@ -172,7 +172,7 @@ impl<V: Display> Ty<V> {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    if l == &i.to_string() {
+                    if l == &(i + 1).to_string() {
                         write!(f, "{ty}")?;
                     } else {
                         write!(f, "{l}: {ty}")?;
@@ -256,7 +256,7 @@ impl<V: Display> Term<V> {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    if l == &i.to_string() {
+                    if l == &(i + 1).to_string() {
                         write!(f, "{term}")?;
                     } else {
                         write!(f, "{l}={term}")?;
@@ -385,6 +385,18 @@ pub enum Binding<V = String> {
 
 pub type DeBruijnBinding = Binding<usize>;
 pub type Context = util::Context<DeBruijnBinding>;
+
+impl<V: Display> Binding<V> {
+    pub fn print_type(&self, x: &str) {
+        match self {
+            Self::Var(ty) => println!("{x} : {ty}"),
+            Self::TermAbb(_, Some(ty)) => println!("{x} : {ty}"),
+            Self::TyVar(kn) => println!("{x} :: {kn}"),
+            Self::TyAbb(_, Some(kn)) => println!("{x} :: {kn}"),
+            _ => {}
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -895,6 +907,21 @@ impl Binding {
             )),
             Self::TyVar(kn) => Ok(DeBruijnBinding::TyVar(kn.clone())),
             Self::TyAbb(ty, kn) => Ok(DeBruijnBinding::TyAbb(ty.to_de_bruijn(ctx)?, kn.clone())),
+        }
+    }
+}
+
+impl DeBruijnBinding {
+    pub fn to_named(&self, ctx: &mut Context) -> Result<Binding> {
+        match self {
+            Self::Name => Ok(Binding::Name),
+            Self::Var(ty) => Ok(Binding::Var(ty.to_named(ctx)?)),
+            Self::TermAbb(t, ty) => Ok(Binding::TermAbb(
+                t.to_named(ctx)?,
+                ty.as_ref().map(|ty| ty.to_named(ctx)).transpose()?,
+            )),
+            Self::TyVar(kn) => Ok(Binding::TyVar(kn.clone())),
+            Self::TyAbb(ty, kn) => Ok(Binding::TyAbb(ty.to_named(ctx)?, kn.clone())),
         }
     }
 }

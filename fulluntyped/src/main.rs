@@ -33,9 +33,9 @@ fn main() -> Result<()> {
                                 Ok(t_) => println!("{t_}"),
                                 Err(err) => eprintln!("Evaluation error: {err}"),
                             },
-                            Command::Bind(x, b) => match b.to_de_bruijn(&mut ctx) {
+                            Command::Bind(x, b) => match b.eval(&mut ctx) {
                                 Ok(b_) => {
-                                    ctx.add_binding(&x, b_.eval(&ctx));
+                                    ctx.add_binding(&x, b_);
                                     rl.helper_mut().unwrap().add_keyword(x);
                                 }
                                 Err(err) => eprintln!("Binding error: {err}"),

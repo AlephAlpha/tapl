@@ -549,14 +549,14 @@ impl Term {
 }
 
 impl DeBruijnBinding {
-    pub fn eval(&self, ctx: &Context, store: &mut Store) -> Self {
+    fn eval(&self, ctx: &Context, store: &mut Store) -> Self {
         match self {
             Self::TermAbb(t, ty) => Self::TermAbb(t.eval(ctx, store), ty.clone()),
             _ => self.clone(),
         }
     }
 
-    pub fn check(&self, ctx: &mut Context) -> Result<Self> {
+    fn check(&self, ctx: &mut Context) -> Result<Self> {
         match self {
             Self::TermAbb(t, ty) => {
                 let ty_ = t.type_of(ctx)?;
@@ -584,5 +584,15 @@ impl DeBruijnBinding {
             }
             _ => Ok(self.clone()),
         }
+    }
+
+    pub fn check_and_eval(&self, ctx: &mut Context, store: &mut Store) -> Result<Self> {
+        self.check(ctx).map(|b| b.eval(ctx, store))
+    }
+}
+
+impl Binding {
+    pub fn check_and_eval(&self, ctx: &mut Context, store: &mut Store) -> Result<DeBruijnBinding> {
+        self.to_de_bruijn(ctx)?.check_and_eval(ctx, store)
     }
 }

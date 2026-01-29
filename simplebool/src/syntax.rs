@@ -99,6 +99,15 @@ pub enum Binding {
 
 pub type Context = util::Context<Binding>;
 
+impl Binding {
+    pub fn print_type(&self, x: &str) {
+        match self {
+            Self::Var(ty) => println!("{x} : {ty}"),
+            Self::Name => {}
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     Eval1(Rc<Term>),

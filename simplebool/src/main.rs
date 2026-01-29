@@ -27,24 +27,25 @@ fn main() -> Result<()> {
                         match cmd {
                             Command::Eval(t) => match t.type_of(&mut ctx) {
                                 Ok(ty) => match t.eval(&mut ctx) {
-                                    Ok(t_) => println!("{t_}: {ty}"),
+                                    Ok(t_) => println!("{t_} : {ty}"),
                                     Err(err) => eprintln!("Evaluation error: {err}"),
                                 },
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
                             Command::Eval1(t) => match t.type_of(&mut ctx) {
                                 Ok(ty) => match t.eval1(&mut ctx) {
-                                    Ok(t_) => println!("{t_}: {ty}"),
+                                    Ok(t_) => println!("{t_} : {ty}"),
                                     Err(err) => eprintln!("Evaluation error: {err}"),
                                 },
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
                             Command::Bind(x, b) => {
+                                b.print_type(&x);
                                 ctx.add_binding(&x, b);
                                 rl.helper_mut().unwrap().add_keyword(x);
                             }
                             Command::Type(t) => match t.type_of(&mut ctx) {
-                                Ok(ty) => println!("{t}: {ty}"),
+                                Ok(ty) => println!("{t} : {ty}"),
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
                             Command::Noop => {}

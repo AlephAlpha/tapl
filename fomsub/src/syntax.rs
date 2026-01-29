@@ -181,6 +181,16 @@ pub enum Binding<V = String> {
 pub type DeBruijnBinding = Binding<usize>;
 pub type Context = util::Context<DeBruijnBinding>;
 
+impl<V: Display> Binding<V> {
+    pub fn print_type(&self, x: &str) {
+        match self {
+            Self::Var(ty) => println!("{x} : {ty}"),
+            Self::TyVar(ty) => println!("{x} <: {ty}"),
+            _ => {}
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     Eval1(Rc<Term>),
@@ -467,6 +477,16 @@ impl Binding {
             Self::Name => Ok(DeBruijnBinding::Name),
             Self::Var(ty) => Ok(DeBruijnBinding::Var(ty.to_de_bruijn(ctx)?)),
             Self::TyVar(ty) => Ok(DeBruijnBinding::TyVar(ty.to_de_bruijn(ctx)?)),
+        }
+    }
+}
+
+impl DeBruijnBinding {
+    pub fn to_named(&self, ctx: &mut Context) -> Result<Binding> {
+        match self {
+            Self::Name => Ok(Binding::Name),
+            Self::Var(ty) => Ok(Binding::Var(ty.to_named(ctx)?)),
+            Self::TyVar(ty) => Ok(Binding::TyVar(ty.to_named(ctx)?)),
         }
     }
 }

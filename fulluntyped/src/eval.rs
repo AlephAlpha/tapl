@@ -111,3 +111,9 @@ impl DeBruijnBinding {
         }
     }
 }
+
+impl Binding {
+    pub fn eval(&self, ctx: &mut Context) -> Result<DeBruijnBinding> {
+        Ok(self.to_de_bruijn(ctx)?.eval(ctx))
+    }
+}

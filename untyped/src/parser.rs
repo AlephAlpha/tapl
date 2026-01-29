@@ -40,21 +40,25 @@ impl Command {
     }
 
     fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
-        let term = Term::parser().map(Self::Eval);
         let eval1 = just(':')
             .then(text::keyword("eval1"))
             .ignore_then(Term::parser())
+            .then_ignore(end())
             .map(Self::Eval1);
         let eval = just(':')
             .then(text::keyword("eval"))
+            .or_not()
             .ignore_then(Term::parser())
+            .then_ignore(end())
             .map(Self::Eval);
         let bind = just(':')
             .then(text::keyword("bind"))
+            .or_not()
             .ignore_then(Term::ident().padded())
+            .then_ignore(end())
             .map(|x| Self::Bind(x, Binding::Name));
-        let noop = text::whitespace().to(Self::Noop);
+        let noop = text::whitespace().then_ignore(end()).to(Self::Noop);
 
-        choice((eval1, eval, bind, term, noop)).then_ignore(end())
+        choice((eval1, eval, bind, noop)).then_ignore(end())
     }
 }
