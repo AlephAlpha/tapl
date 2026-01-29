@@ -149,7 +149,7 @@ impl Store {
         Self { store: Vec::new() }
     }
 
-    fn len(&self) -> usize {
+    const fn len(&self) -> usize {
         self.store.len()
     }
 

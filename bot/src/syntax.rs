@@ -93,9 +93,8 @@ pub type Context = util::Context<Binding>;
 
 impl Binding {
     pub fn print_type(&self, x: &str) {
-        match self {
-            Self::Var(ty) => println!("{x} : {ty}"),
-            _ => {}
+        if let Self::Var(ty) = self {
+            println!("{x} : {ty}")
         }
     }
 }
