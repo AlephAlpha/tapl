@@ -63,7 +63,7 @@ impl DeBruijnTerm {
     fn type_of_walk(&self, ctx: &mut Context) -> Result<Rc<Ty>> {
         match self {
             Self::Var(i) => match ctx.use_binding(*i)? {
-                Binding::Var(ty) => Ok(ty.clone()),
+                Binding::Var(ty) => Ok(ty),
                 Binding::Used => Err(Error::TypeError(format!(
                     "variable {} has already been used",
                     ctx.index_to_name(*i).unwrap()
@@ -157,9 +157,8 @@ impl DeBruijnTerm {
                 ctx.check_unused_lin()?;
                 Ok(ty)
             })
-            .or_else(|e| {
+            .inspect_err(|_| {
                 *ctx = old_ctx;
-                Err(e)
             })
     }
 }

@@ -45,10 +45,10 @@ impl<T> Context<T> {
     where
         T: BindingLinear,
     {
-        if let Some((name, b)) = self.bindings.pop() {
-            if b.is_unused_lin() {
-                return Err(Error::UnusedLinearVariable(name));
-            }
+        if let Some((name, b)) = self.bindings.pop()
+            && b.is_unused_lin()
+        {
+            return Err(Error::UnusedLinearVariable(name));
         }
         Ok(())
     }

@@ -204,9 +204,8 @@ pub type Context = util::Context<Binding>;
 
 impl Binding {
     pub fn print_type(&self, x: &str) {
-        match self {
-            Self::Var(ty) => println!("{x} : {ty}"),
-            _ => {}
+        if let Self::Var(ty) = self {
+            println!("{x} : {ty}")
         }
     }
 }
@@ -245,7 +244,7 @@ impl DeBruijnTerm {
         f: &mut impl FnMut(usize, usize) -> Result<Rc<Self>>,
     ) -> Result<Rc<Self>> {
         match self {
-            Self::Var(x) => f(*x, cutoff),
+            Self::Var(x) => f(cutoff, *x),
             Self::Bool(q, b) => Ok(Self::bool(*q, *b)),
             Self::If(t1, t2, t3) => Ok(Self::if_(
                 t1.map_vars_walk(cutoff, f)?,
