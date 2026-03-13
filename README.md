@@ -1,6 +1,6 @@
 # TAPL
 
-Implementations of the languages in Pierce's [Types and Programming Languages](https://www.cis.upenn.edu/~bcpierce/tapl/) in Rust. Based on [the official implementations in Ocaml](https://github.com/mspertus/TAPL).
+Implementations of the languages in Benjamin C. Pierce's [*Types and Programming Languages*](https://www.cis.upenn.edu/~bcpierce/tapl/index.html) in Rust. Based on [the official implementations in Ocaml](https://github.com/mspertus/TAPL). A few languages from [*Advanced Topics in Types and Programming Languages*](https://www.cis.upenn.edu/~bcpierce/attapl/index.html) are also implemented.
 
 Each language comes with a simple REPL with tab completion for keywords. But reading source codes from a file is not yet supported.
 

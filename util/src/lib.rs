@@ -8,5 +8,5 @@ pub mod error;
 pub mod parser;
 
 pub use completer::KeywordsCompleter;
-pub use context::{BindingShift, Context};
+pub use context::{BindingLinear, BindingShift, Context};
 pub use util_derive::RcTerm;

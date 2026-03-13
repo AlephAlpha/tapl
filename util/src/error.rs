@@ -19,6 +19,8 @@ pub enum Error {
     UnificationError(String),
     #[error("{0}")]
     KindError(String),
+    #[error("Unused linear variable {0}")]
+    UnusedLinearVariable(String),
 }
 
 pub type Result<T, E = Error> = StdResult<T, E>;

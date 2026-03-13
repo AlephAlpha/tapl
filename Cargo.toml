@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "arith",
-    "untyped",
     "util",
     "util-derive",
+    "arith",
+    "untyped",
     "fulluntyped",
     "tyarith",
     "simplebool",
@@ -24,6 +24,7 @@ members = [
     "fullfomsub",
     "fomsub",
     "fullupdate",
+    "linear",
 ]
 resolver = "3"
 
