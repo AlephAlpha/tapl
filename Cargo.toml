@@ -25,12 +25,13 @@ members = [
     "fomsub",
     "fullupdate",
     "linear",
+    "order",
 ]
 resolver = "3"
 
 [workspace.dependencies]
 chumsky = "0.12.0"
-rustyline = { version = "17.0.2", features = ["derive"] }
+rustyline = { version = "18.0.0", features = ["derive"] }
 thiserror = "2.0.18"
 util = { path = "util" }
 util-derive = { path = "util-derive" }

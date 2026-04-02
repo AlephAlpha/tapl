@@ -75,9 +75,16 @@ impl<T> Context<T> {
         T: BindingLinear,
     {
         self.add_binding(name, data);
-        let result = f(self);
-        self.drop_linear_binding()?;
-        result
+        match f(self) {
+            Ok(result) => {
+                self.drop_linear_binding()?;
+                Ok(result)
+            }
+            Err(e) => {
+                self.drop_binding();
+                Err(e)
+            }
+        }
     }
 
     pub fn with_name<U>(&mut self, name: impl Into<String>, f: impl FnOnce(&mut Self) -> U) -> U
@@ -136,16 +143,28 @@ impl<T> Context<T> {
     where
         T: BindingLinear + Clone,
     {
-        self.bindings
-            .iter_mut()
-            .rev()
-            .nth(i)
-            .map(|(_, b)| {
-                let b_ = b.clone();
-                *b = b_.used();
-                b_
-            })
-            .ok_or_else(|| Error::VariableLookupFailure(i, self.len()))
+        if i >= self.len() {
+            return Err(Error::VariableLookupFailure(i, self.len()));
+        }
+
+        let (name, b) = &self.bindings[self.len() - 1 - i];
+        if b.is_used() {
+            return Err(Error::LinearVariableUsed(name.clone()));
+        }
+
+        if b.is_ord()
+            && let Some((name_, _)) = self.bindings.iter().rev().take(i).find(|(_, b)| b.is_ord())
+        {
+            return Err(Error::OrderedVariableUsedOutOfOrder(
+                name.clone(),
+                name_.clone(),
+            ));
+        }
+
+        let b_ = b.clone();
+        let len = self.len();
+        self.bindings[len - 1 - i].1 = b_.used();
+        Ok(b_)
     }
 
     pub fn use_binding_shifting(&mut self, i: usize) -> Result<T>
@@ -180,4 +199,8 @@ pub trait BindingLinear: Sized {
     fn is_used(&self) -> bool;
 
     fn is_unused_lin(&self) -> bool;
+
+    fn is_ord(&self) -> bool {
+        false
+    }
 }

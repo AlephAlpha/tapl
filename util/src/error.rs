@@ -19,8 +19,12 @@ pub enum Error {
     UnificationError(String),
     #[error("{0}")]
     KindError(String),
+    #[error("Linear variable {0} has already been used")]
+    LinearVariableUsed(String),
     #[error("Unused linear variable {0}")]
     UnusedLinearVariable(String),
+    #[error("Ordered variable {0} and {1} used out of order")]
+    OrderedVariableUsedOutOfOrder(String, String),
 }
 
 pub type Result<T, E = Error> = StdResult<T, E>;

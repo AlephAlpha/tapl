@@ -48,6 +48,13 @@ impl DeBruijnTerm {
                     }
                 }
             },
+            Self::Let(x, t1, t2) => {
+                if t1.is_val(ctx) {
+                    t2.subst_top(t1)
+                } else {
+                    Ok(Self::let_(x.clone(), t1.eval1(ctx)?, t2.clone()))
+                }
+            }
             _ => Err(Error::NoRuleApplies),
         }
     }
@@ -64,6 +71,10 @@ impl DeBruijnTerm {
         match self {
             Self::Var(i) => match ctx.use_binding(*i)? {
                 Binding::Var(ty) => Ok(ty),
+                Binding::Used => Err(Error::TypeError(format!(
+                    "variable {} has already been used",
+                    ctx.index_to_name(*i).unwrap()
+                ))),
                 _ => Err(Error::TypeError(format!(
                     "wrong kind of binding for variable {}",
                     ctx.index_to_name(*i).unwrap()
@@ -90,13 +101,17 @@ impl DeBruijnTerm {
                 }
             }
             Self::Pair(q, t1, t2) => {
-                let ty1 = t1.type_of_walk(ctx)?;
                 let ty2 = t2.type_of_walk(ctx)?;
+                let ty1 = t1.type_of_walk(ctx)?;
                 if ty1.qualifier >= *q && ty2.qualifier >= *q {
                     Ok(Ty::new(*q, PreTy::pair(ty1, ty2)))
-                } else {
+                } else if q == &Qualifier::Un {
                     Err(Error::TypeError(
                         "linear components in unrestricted pair".to_string(),
+                    ))
+                } else {
+                    Err(Error::TypeError(
+                        "ordered components in non-ordered pair".to_string(),
                     ))
                 }
             }
@@ -122,15 +137,19 @@ impl DeBruijnTerm {
 
                 if q != &Qualifier::Un || ctx == &ctx_ {
                     ty
-                } else {
+                } else if q == &Qualifier::Un {
                     Err(Error::TypeError(
                         "linear variable captured by unrestricted function".to_string(),
+                    ))
+                } else {
+                    Err(Error::TypeError(
+                        "ordered variable captured by non-ordered function".to_string(),
                     ))
                 }
             }
             Self::App(t1, t2) => {
-                let ty1 = t1.type_of(ctx)?;
                 let ty2 = t2.type_of(ctx)?;
+                let ty1 = t1.type_of(ctx)?;
                 match ty1.pre_ty.as_ref() {
                     PreTy::Arr(ty11, ty12) => {
                         if ty2 == *ty11 {
@@ -141,6 +160,10 @@ impl DeBruijnTerm {
                     }
                     _ => Err(Error::TypeError("arrow type expected".to_string())),
                 }
+            }
+            Self::Let(x, t1, t2) => {
+                let ty1 = t1.type_of_walk(ctx)?;
+                ctx.with_linear_binding(x.clone(), Binding::Var(ty1), |ctx| t2.type_of_walk(ctx))
             }
         }
     }
