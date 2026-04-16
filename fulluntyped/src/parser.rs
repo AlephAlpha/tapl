@@ -102,7 +102,7 @@ impl Term {
             .then_ignore(just('='))
             .then(term.clone())
             .then_ignore(text::keyword("in"))
-            .then(term.clone())
+            .then(term)
             .map(|((x, t1), t2)| Self::let_(x, t1, t2));
 
         choice((if_, abs, let_, app))

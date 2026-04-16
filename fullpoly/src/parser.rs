@@ -64,7 +64,7 @@ impl Ty {
         let all = text::keyword("All")
             .ignore_then(Self::ident().padded())
             .then_ignore(just('.'))
-            .then(ty.clone())
+            .then(ty)
             .map(|(x, t)| Self::all(x, t));
 
         all.or(arrow).padded().labelled("type").boxed()
@@ -251,11 +251,11 @@ impl Term {
         let let_rec = text::keyword("letrec")
             .ignore_then(Self::ident_or_underscore().padded())
             .then_ignore(just(':'))
-            .then(ty.clone())
+            .then(ty)
             .then_ignore(just('='))
             .then(term.clone())
             .then_ignore(text::keyword("in"))
-            .then(term.clone())
+            .then(term)
             .map(|(((x, ty), t1), t2)| Self::let_(x.clone(), Self::fix(Self::abs(x, ty, t1)), t2));
 
         choice((if_, abs, t_abs, unpack, let_, let_rec, app))

@@ -35,7 +35,7 @@ impl Term {
             .then_ignore(text::keyword("then"))
             .then(term.clone())
             .then_ignore(text::keyword("else"))
-            .then(term.clone())
+            .then(term)
             .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
         app.or(if_).padded().labelled("term").boxed()

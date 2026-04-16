@@ -34,7 +34,7 @@ impl Ty {
 
         let record = fields.delimited_by(just('{'), just('}')).map(Self::record);
 
-        let parens = ty.clone().delimited_by(just('('), just(')'));
+        let parens = ty.delimited_by(just('('), just(')'));
 
         let atom = choice((bot, top, record, parens)).padded();
 
@@ -106,9 +106,9 @@ impl Term {
         let abs = text::keyword("lambda")
             .ignore_then(Self::ident_or_underscore().padded())
             .then_ignore(just(':'))
-            .then(ty.clone())
+            .then(ty)
             .then_ignore(just('.'))
-            .then(term.clone())
+            .then(term)
             .map(|((x, ty), t)| Self::abs(x, ty, t));
 
         choice((abs, app)).padded().labelled("term").boxed()

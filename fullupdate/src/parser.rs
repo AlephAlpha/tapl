@@ -9,7 +9,7 @@ impl Kind {
     ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         let star = just('*').to(Self::star());
 
-        let parens = kind.clone().delimited_by(just('('), just(')'));
+        let parens = kind.delimited_by(just('('), just(')'));
 
         let atom = star.or(parens).padded();
 
@@ -108,7 +108,7 @@ impl Ty {
             .ignore_then(Self::ident().padded())
             .then(
                 just("::")
-                    .ignore_then(kind.clone())
+                    .ignore_then(kind)
                     .or_not()
                     .map(|k| k.unwrap_or_else(Kind::star)),
             )
@@ -120,7 +120,7 @@ impl Ty {
             .ignore_then(Self::ident().padded())
             .then(o_type.clone())
             .then_ignore(just('.'))
-            .then(ty.clone())
+            .then(ty)
             .map(|((x, t1), t2)| Self::all(x, t1, t2));
 
         choice((arrow, abs, all)).padded().labelled("type").boxed()
@@ -273,7 +273,7 @@ impl Term {
             .ignore_then(Ty::ident().padded())
             .then(
                 just("<:").ignore_then(ty.clone()).or(just("::")
-                    .ignore_then(kind.clone())
+                    .ignore_then(kind)
                     .or_not()
                     .map(|k| k.unwrap_or_else(Kind::star).make_top())),
             )
@@ -307,7 +307,7 @@ impl Term {
         let let_rec = text::keyword("letrec")
             .ignore_then(Self::ident_or_underscore().padded())
             .then_ignore(just(':'))
-            .then(ty.clone())
+            .then(ty)
             .then_ignore(just('='))
             .then(term.clone())
             .then_ignore(text::keyword("in"))
@@ -327,7 +327,7 @@ impl Term {
             .then_ignore(just("<-"))
             .then(text::ident().padded())
             .then_ignore(just('='))
-            .then(term.clone())
+            .then(term)
             .map(|((t1, l), t2)| Self::update(t1, l, t2));
 
         choice((abs, t_abs, unpack, let_, let_rec, if_, update, app))
@@ -364,14 +364,12 @@ impl Binding {
             .padded()
             .then(
                 just("::")
-                    .ignore_then(kind.clone())
+                    .ignore_then(kind)
                     .or_not()
                     .map(|k| k.unwrap_or_else(Kind::star)),
             )
             .repeated()
-            .foldr(just('=').ignore_then(ty.clone()), |(x, kn), ty| {
-                Ty::abs(x, kn, ty)
-            })
+            .foldr(just('=').ignore_then(ty), |(x, kn), ty| Ty::abs(x, kn, ty))
             .map(|ty| Self::TyAbb(ty, None));
 
         ty_abb.or(ty_var).padded()

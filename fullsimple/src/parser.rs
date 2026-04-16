@@ -51,7 +51,7 @@ impl Ty {
             .delimited_by(just('<'), just('>'))
             .map(Self::variant);
 
-        let parens = ty.clone().delimited_by(just('('), just(')'));
+        let parens = ty.delimited_by(just('('), just(')'));
 
         let atom = choice((string, bool, unit, float, nat, record, variant, parens, var)).padded();
 
@@ -201,7 +201,7 @@ impl Term {
         let let_rec = text::keyword("letrec")
             .ignore_then(Self::ident_or_underscore().padded())
             .then_ignore(just(':'))
-            .then(ty.clone())
+            .then(ty)
             .then_ignore(just('='))
             .then(term.clone())
             .then_ignore(text::keyword("in"))
@@ -221,7 +221,7 @@ impl Term {
             .at_least(1);
 
         let case = text::keyword("case")
-            .ignore_then(term.clone())
+            .ignore_then(term)
             .then_ignore(text::keyword("of"))
             .then(cases.collect::<Vec<_>>())
             .map(|(t, cases)| Self::case(t, cases));

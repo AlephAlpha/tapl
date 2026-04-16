@@ -7,7 +7,7 @@ impl Ty {
     fn parser<'src>(
         ty: impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone + 'src,
     ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
-        let pre_ty = ty.clone().map(|t| t.pre_ty.clone());
+        let pre_ty = ty.map(|t| t.pre_ty.clone());
 
         let qualifier = choice((
             text::keyword("ord").to(Qualifier::Ord),
@@ -125,9 +125,9 @@ impl Term {
         let abs = text::keyword("lambda")
             .ignore_then(Self::ident_or_underscore().padded())
             .then_ignore(just(':'))
-            .then(ty.clone())
+            .then(ty)
             .then_ignore(just('.'))
-            .then(term.clone())
+            .then(term)
             .map(|((x, ty), t)| Self::abs(Qualifier::Un, x, ty, t));
 
         let qualified_abs = qualifier

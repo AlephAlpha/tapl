@@ -15,7 +15,7 @@ impl Ty {
         let bool = text::keyword("Bool").to(Self::bool());
         let nat = text::keyword("Nat").to(Self::nat());
 
-        let parens = ty.clone().delimited_by(just('('), just(')'));
+        let parens = ty.delimited_by(just('('), just(')'));
 
         let atom = choice((bool, nat, parens, id)).padded();
 
@@ -77,7 +77,7 @@ impl Term {
 
         let abs = text::keyword("lambda")
             .ignore_then(Self::ident_or_underscore().padded())
-            .then(just(':').ignore_then(ty.clone()).or_not())
+            .then(just(':').ignore_then(ty).or_not())
             .then_ignore(just('.'))
             .then(term.clone())
             .map(|((x, ty), t)| Self::abs(x, ty, t));
@@ -87,7 +87,7 @@ impl Term {
             .then_ignore(just('='))
             .then(term.clone())
             .then_ignore(text::keyword("in"))
-            .then(term.clone())
+            .then(term)
             .map(|((x, t1), t2)| Self::let_(x, t1, t2));
 
         choice((if_, abs, let_, app))

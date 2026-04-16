@@ -9,7 +9,7 @@ impl Ty {
     ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         let bool = text::keyword("Bool").to(Self::bool());
 
-        let parens = ty.clone().delimited_by(just('('), just(')'));
+        let parens = ty.delimited_by(just('('), just(')'));
 
         let atom = bool.or(parens).padded();
 
@@ -59,9 +59,9 @@ impl Term {
         let abs = text::keyword("lambda")
             .ignore_then(Self::ident_or_underscore().padded())
             .then_ignore(just(':'))
-            .then(ty.clone())
+            .then(ty)
             .then_ignore(just('.'))
-            .then(term.clone())
+            .then(term)
             .map(|((x, ty), t)| Self::abs(x, ty, t));
 
         choice((if_, abs, app)).padded().labelled("term").boxed()

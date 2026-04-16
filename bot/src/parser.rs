@@ -10,7 +10,7 @@ impl Ty {
         let bot = text::keyword("Bot").to(Self::bot());
         let top = text::keyword("Top").to(Self::top());
 
-        let parens = ty.clone().delimited_by(just('('), just(')'));
+        let parens = ty.delimited_by(just('('), just(')'));
 
         let atom = choice((bot, top, parens)).padded();
 
@@ -51,7 +51,7 @@ impl Term {
             .then_ignore(just(':'))
             .then(ty)
             .then_ignore(just('.'))
-            .then(term.clone())
+            .then(term)
             .map(|((x, ty), t)| Self::abs(x, ty, t));
 
         choice((abs, app)).padded().labelled("term").boxed()

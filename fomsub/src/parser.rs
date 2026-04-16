@@ -9,7 +9,7 @@ impl Kind {
     ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         let star = just('*').to(Self::star());
 
-        let parens = kind.clone().delimited_by(just('('), just(')'));
+        let parens = kind.delimited_by(just('('), just(')'));
 
         let atom = star.or(parens).padded();
 
@@ -72,12 +72,12 @@ impl Ty {
             .ignore_then(Self::ident().padded())
             .then(
                 just("<:").ignore_then(ty.clone()).or(just("::")
-                    .ignore_then(kind.clone())
+                    .ignore_then(kind)
                     .or_not()
                     .map(|k| k.unwrap_or_else(Kind::star).make_top())),
             )
             .then_ignore(just('.'))
-            .then(ty.clone())
+            .then(ty)
             .map(|((x, t1), t2)| Self::all(x, t1, t2));
 
         choice((arrow, abs, all)).padded().labelled("type").boxed()
@@ -132,13 +132,13 @@ impl Term {
         let t_abs = text::keyword("lambda")
             .ignore_then(Ty::ident().padded())
             .then(
-                just("<:").ignore_then(ty.clone()).or(just("::")
-                    .ignore_then(kind.clone())
+                just("<:").ignore_then(ty).or(just("::")
+                    .ignore_then(kind)
                     .or_not()
                     .map(|k| k.unwrap_or_else(Kind::star).make_top())),
             )
             .then_ignore(just('.'))
-            .then(term.clone())
+            .then(term)
             .map(|((x, ty), t)| Self::t_abs(x, ty, t));
 
         choice((abs, t_abs, app)).padded().labelled("term").boxed()

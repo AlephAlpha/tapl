@@ -9,7 +9,7 @@ impl Kind {
     ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         let star = just('*').to(Self::star());
 
-        let parens = kind.clone().delimited_by(just('('), just(')'));
+        let parens = kind.delimited_by(just('('), just(')'));
 
         let atom = star.or(parens).padded();
 
@@ -106,12 +106,12 @@ impl Ty {
             .ignore_then(Self::ident().padded())
             .then(
                 just("::")
-                    .ignore_then(kind.clone())
+                    .ignore_then(kind)
                     .or_not()
                     .map(|k| k.unwrap_or_else(Kind::star)),
             )
             .then_ignore(just('.'))
-            .then(ty.clone())
+            .then(ty)
             .map(|((x, kn), t)| Self::all(x, kn, t));
 
         let ref_ = text::keyword("Ref")
@@ -283,7 +283,7 @@ impl Term {
             .ignore_then(Ty::ident().padded())
             .then(
                 just("::")
-                    .ignore_then(kind.clone())
+                    .ignore_then(kind)
                     .or_not()
                     .map(|k| k.unwrap_or_else(Kind::star)),
             )
@@ -324,7 +324,7 @@ impl Term {
         let let_rec = text::keyword("letrec")
             .ignore_then(Self::ident_or_underscore().padded())
             .then_ignore(just(':'))
-            .then(ty.clone())
+            .then(ty)
             .then_ignore(just('='))
             .then(term.clone())
             .then_ignore(text::keyword("in"))
@@ -336,7 +336,7 @@ impl Term {
             .then_ignore(text::keyword("then"))
             .then(term.clone())
             .then_ignore(text::keyword("else"))
-            .then(term.clone())
+            .then(term)
             .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
         choice((abs, t_abs, assign, unpack, let_, let_rec, if_, app))
@@ -371,7 +371,7 @@ impl Binding {
             .padded()
             .then(
                 just("::")
-                    .ignore_then(kind.clone())
+                    .ignore_then(kind)
                     .or_not()
                     .map(|k| k.unwrap_or_else(Kind::star)),
             )

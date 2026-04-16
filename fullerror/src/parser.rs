@@ -17,7 +17,7 @@ impl Ty {
         let top = text::keyword("Top").to(Self::top());
         let bool = text::keyword("Bool").to(Self::bool());
 
-        let parens = ty.clone().delimited_by(just('('), just(')'));
+        let parens = ty.delimited_by(just('('), just(')'));
 
         let atom = choice((bot, top, bool, parens, var)).padded();
 
@@ -60,7 +60,7 @@ impl Term {
         let abs = text::keyword("lambda")
             .ignore_then(Self::ident_or_underscore().padded())
             .then_ignore(just(':'))
-            .then(ty.clone())
+            .then(ty)
             .then_ignore(just('.'))
             .then(term.clone())
             .map(|((x, ty), t)| Self::abs(x, ty, t));
@@ -76,7 +76,7 @@ impl Term {
         let try_ = text::keyword("try")
             .ignore_then(term.clone())
             .then_ignore(text::keyword("with"))
-            .then(term.clone())
+            .then(term)
             .map(|(t1, t2)| Self::try_(t1, t2));
 
         choice((abs, if_, try_, app))

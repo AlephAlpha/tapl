@@ -37,7 +37,7 @@ impl Ty {
     ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         let var = Self::ident().map(Self::var);
 
-        let parens = ty.clone().delimited_by(just('('), just(')'));
+        let parens = ty.delimited_by(just('('), just(')'));
 
         var.or(parens).padded().labelled("type atom").boxed()
     }
@@ -61,7 +61,7 @@ impl Ty {
             .then_ignore(just(":"))
             .then(ty.clone())
             .then_ignore(just('.'))
-            .then(ty.clone())
+            .then(ty)
             .map(|((x, ty1), ty2)| Self::pi(x, ty1, ty2));
 
         arrow.or(pi).padded().labelled("type").boxed()
@@ -95,7 +95,7 @@ impl Term {
             .then_ignore(just(":"))
             .then(ty)
             .then_ignore(just('.'))
-            .then(term.clone())
+            .then(term)
             .map(|((x, ty), t)| Self::abs(x, ty, t));
 
         app.or(abs).padded().labelled("term").boxed()

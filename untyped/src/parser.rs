@@ -27,7 +27,7 @@ impl Term {
         let abs = text::keyword("lambda")
             .ignore_then(Self::ident_or_underscore().padded())
             .then_ignore(just('.'))
-            .then(term.clone())
+            .then(term)
             .map(|(x, t)| Self::abs(x, t));
 
         abs.or(app).padded()

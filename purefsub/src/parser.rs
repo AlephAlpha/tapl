@@ -34,7 +34,7 @@ impl Ty {
                     .map(|t| t.unwrap_or_else(Self::top)),
             )
             .then_ignore(just('.'))
-            .then(ty.clone())
+            .then(ty)
             .map(|((x, t1), t2)| Self::all(x, t1, t2));
 
         all.or(arrow).padded().labelled("type").boxed()
@@ -89,12 +89,12 @@ impl Term {
             .ignore_then(Ty::ident().padded())
             .then(
                 just("<:")
-                    .ignore_then(ty.clone())
+                    .ignore_then(ty)
                     .or_not()
                     .map(|t| t.unwrap_or_else(Ty::top)),
             )
             .then_ignore(just('.'))
-            .then(term.clone())
+            .then(term)
             .map(|((x, ty), t)| Self::t_abs(x, ty, t));
 
         choice((abs, t_abs, app)).padded().labelled("term").boxed()

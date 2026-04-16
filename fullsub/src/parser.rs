@@ -44,7 +44,7 @@ impl Ty {
 
         let record = fields.delimited_by(just('{'), just('}')).map(Self::record);
 
-        let parens = ty.clone().delimited_by(just('('), just(')'));
+        let parens = ty.delimited_by(just('('), just(')'));
 
         let atom = choice((top, string, bool, unit, float, nat, record, parens, var)).padded();
 
@@ -191,11 +191,11 @@ impl Term {
         let let_rec = text::keyword("letrec")
             .ignore_then(Self::ident_or_underscore().padded())
             .then_ignore(just(':'))
-            .then(ty.clone())
+            .then(ty)
             .then_ignore(just('='))
             .then(term.clone())
             .then_ignore(text::keyword("in"))
-            .then(term.clone())
+            .then(term)
             .map(|(((x, ty), t1), t2)| Self::let_(x.clone(), Self::fix(Self::abs(x, ty, t1)), t2));
 
         choice((if_, abs, let_, let_rec, app))
