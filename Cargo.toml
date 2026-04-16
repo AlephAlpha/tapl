@@ -26,6 +26,7 @@ members = [
     "fullupdate",
     "linear",
     "order",
+    "lf",
 ]
 resolver = "3"
 

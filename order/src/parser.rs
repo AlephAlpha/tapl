@@ -4,9 +4,10 @@ use std::rc::Rc;
 use util::parser::ParserError;
 
 impl Ty {
-    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
-        let mut pre_ty = Recursive::declare();
-        let mut ty = Recursive::declare();
+    fn parser<'src>(
+        ty: impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone + 'src,
+    ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
+        let pre_ty = ty.clone().map(|t| t.pre_ty.clone());
 
         let qualifier = choice((
             text::keyword("ord").to(Qualifier::Ord),
@@ -45,12 +46,7 @@ impl Ty {
             .repeated()
             .foldr(pair.clone(), |t1, t2| Self::un(PreTy::arr(t1, t2)));
 
-        let pre_arrow = arrow.clone().map(|t| t.pre_ty.clone());
-
-        pre_ty.define(pre_arrow.padded().labelled("pre_ty").boxed());
-        ty.define(arrow.padded().labelled("ty").boxed());
-
-        ty
+        arrow.padded().labelled("ty").boxed()
     }
 }
 
@@ -64,91 +60,94 @@ impl Term {
         Self::ident().or(text::keyword("_").to("_".to_string()))
     }
 
-    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
-        recursive(|term| {
-            let qualifier = choice((
-                text::keyword("ord").to(Qualifier::Ord),
-                text::keyword("lin").to(Qualifier::Lin),
-                text::keyword("un").to(Qualifier::Un),
-            ))
-            .padded();
+    fn parser<'src>(
+        ty: impl Parser<'src, &'src str, Rc<Ty>, ParserError<'src>> + Clone + 'src,
+        term: impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone + 'src,
+    ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
+        let qualifier = choice((
+            text::keyword("ord").to(Qualifier::Ord),
+            text::keyword("lin").to(Qualifier::Lin),
+            text::keyword("un").to(Qualifier::Un),
+        ))
+        .padded();
 
-            let var = Self::ident().map(Self::var);
+        let var = Self::ident().map(Self::var);
 
-            let true_ = text::keyword("true").to(Self::bool(Qualifier::Un, true));
-            let false_ = text::keyword("false").to(Self::bool(Qualifier::Un, false));
+        let true_ = text::keyword("true").to(Self::bool(Qualifier::Un, true));
+        let false_ = text::keyword("false").to(Self::bool(Qualifier::Un, false));
 
-            let pair = term
-                .clone()
-                .then_ignore(just(','))
-                .then(term.clone())
-                .delimited_by(just('<'), just('>'))
-                .map(|(t1, t2)| Self::pair(Qualifier::Un, t1, t2));
+        let pair = term
+            .clone()
+            .then_ignore(just(','))
+            .then(term.clone())
+            .delimited_by(just('<'), just('>'))
+            .map(|(t1, t2)| Self::pair(Qualifier::Un, t1, t2));
 
-            let parens = term.clone().delimited_by(just('('), just(')'));
+        let parens = term.clone().delimited_by(just('('), just(')'));
 
-            let atom = choice((true_.clone(), false_.clone(), pair.clone(), parens, var)).padded();
+        let atom = choice((true_.clone(), false_.clone(), pair.clone(), parens, var)).padded();
 
-            let qualified = qualifier
-                .clone()
-                .then(choice((true_, false_, pair)).padded())
-                .map(|(q, t)| t.with_qualifier(q));
+        let qualified = qualifier
+            .clone()
+            .then(choice((true_, false_, pair)).padded())
+            .map(|(q, t)| t.with_qualifier(q));
 
-            let app = qualified
-                .or(atom.clone())
-                .foldl(atom.clone().repeated(), Self::app);
+        let app = qualified
+            .or(atom.clone())
+            .foldl(atom.clone().repeated(), Self::app);
 
-            let if_ = text::keyword("if")
-                .ignore_then(term.clone())
-                .then_ignore(text::keyword("then"))
-                .then(term.clone())
-                .then_ignore(text::keyword("else"))
-                .then(term.clone())
-                .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
+        let if_ = text::keyword("if")
+            .ignore_then(term.clone())
+            .then_ignore(text::keyword("then"))
+            .then(term.clone())
+            .then_ignore(text::keyword("else"))
+            .then(term.clone())
+            .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
-            let split = text::keyword("split")
-                .ignore_then(term.clone())
-                .then_ignore(text::keyword("as"))
-                .then(Self::ident_or_underscore().padded())
-                .then_ignore(just(','))
-                .then(Self::ident_or_underscore().padded())
-                .then_ignore(text::keyword("in"))
-                .then(term.clone())
-                .map(|(((t1, x1), x2), t2)| Self::split(t1, x1, x2, t2));
+        let split = text::keyword("split")
+            .ignore_then(term.clone())
+            .then_ignore(text::keyword("as"))
+            .then(Self::ident_or_underscore().padded())
+            .then_ignore(just(','))
+            .then(Self::ident_or_underscore().padded())
+            .then_ignore(text::keyword("in"))
+            .then(term.clone())
+            .map(|(((t1, x1), x2), t2)| Self::split(t1, x1, x2, t2));
 
-            let let_ = text::keyword("let")
-                .ignore_then(Self::ident_or_underscore().padded())
-                .then_ignore(just('='))
-                .then(term.clone())
-                .then_ignore(text::keyword("in"))
-                .then(term.clone())
-                .map(|((x, t1), t2)| Self::let_(x, t1, t2));
+        let let_ = text::keyword("let")
+            .ignore_then(Self::ident_or_underscore().padded())
+            .then_ignore(just('='))
+            .then(term.clone())
+            .then_ignore(text::keyword("in"))
+            .then(term.clone())
+            .map(|((x, t1), t2)| Self::let_(x, t1, t2));
 
-            let abs = text::keyword("lambda")
-                .ignore_then(Self::ident_or_underscore().padded())
-                .then_ignore(just(':'))
-                .then(Ty::parser())
-                .then_ignore(just('.'))
-                .then(term.clone())
-                .map(|((x, ty), t)| Self::abs(Qualifier::Un, x, ty, t));
+        let abs = text::keyword("lambda")
+            .ignore_then(Self::ident_or_underscore().padded())
+            .then_ignore(just(':'))
+            .then(ty.clone())
+            .then_ignore(just('.'))
+            .then(term.clone())
+            .map(|((x, ty), t)| Self::abs(Qualifier::Un, x, ty, t));
 
-            let qualified_abs = qualifier
-                .clone()
-                .then(abs.clone())
-                .map(|(q, t)| t.with_qualifier(q));
+        let qualified_abs = qualifier
+            .clone()
+            .then(abs.clone())
+            .map(|(q, t)| t.with_qualifier(q));
 
-            choice((if_, split, let_, qualified_abs, abs, app))
-                .padded()
-                .labelled("term")
-                .boxed()
-        })
+        choice((if_, split, let_, qualified_abs, abs, app))
+            .padded()
+            .labelled("term")
+            .boxed()
     }
 }
 
 impl Binding {
-    fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
+    fn parser<'src>(
+        ty: impl Parser<'src, &'src str, Rc<Ty>, ParserError<'src>> + 'src,
+    ) -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let name = empty().to(Self::Name);
-        let var = just(':').ignore_then(Ty::parser()).map(Self::Var);
+        let var = just(':').ignore_then(ty).map(Self::Var);
 
         var.or(name).padded()
     }
@@ -160,27 +159,33 @@ impl Command {
     }
 
     fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
+        let mut ty = Recursive::declare();
+        let mut term = Recursive::declare();
+
+        ty.define(Ty::parser(ty.clone()));
+        term.define(Term::parser(ty.clone(), term.clone()));
+
         let eval1 = just(':')
             .then(text::keyword("eval1"))
-            .ignore_then(Term::parser())
+            .ignore_then(term.clone())
             .then_ignore(end())
             .map(Self::Eval1);
         let eval = just(':')
             .then(text::keyword("eval"))
             .or_not()
-            .ignore_then(Term::parser())
+            .ignore_then(term.clone())
             .then_ignore(end())
             .map(Self::Eval);
         let bind = just(':')
             .then(text::keyword("bind"))
             .or_not()
             .ignore_then(Term::ident().padded())
-            .then(Binding::parser())
+            .then(Binding::parser(ty.clone()))
             .then_ignore(end())
             .map(|(x, b)| Self::Bind(x, b));
         let type_ = just(':')
             .then(text::keyword("type"))
-            .ignore_then(Term::parser())
+            .ignore_then(term.clone())
             .then_ignore(end())
             .map(Self::Type);
         let noop = text::whitespace().then_ignore(end()).to(Self::Noop);

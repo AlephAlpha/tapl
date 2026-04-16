@@ -13,24 +13,24 @@ impl Term {
         Self::ident().or(text::keyword("_").to("_".to_string()))
     }
 
-    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
-        recursive(|term| {
-            let var = Self::ident().map(Self::var);
+    fn parser<'src>(
+        term: impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone + 'src,
+    ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
+        let var = Self::ident().map(Self::var);
 
-            let parens = term.clone().delimited_by(just('('), just(')'));
+        let parens = term.clone().delimited_by(just('('), just(')'));
 
-            let atom = var.or(parens).padded();
+        let atom = var.or(parens).padded();
 
-            let app = atom.clone().foldl(atom.repeated(), Self::app);
+        let app = atom.clone().foldl(atom.repeated(), Self::app);
 
-            let abs = text::keyword("lambda")
-                .ignore_then(Self::ident_or_underscore().padded())
-                .then_ignore(just('.'))
-                .then(term.clone())
-                .map(|(x, t)| Self::abs(x, t));
+        let abs = text::keyword("lambda")
+            .ignore_then(Self::ident_or_underscore().padded())
+            .then_ignore(just('.'))
+            .then(term.clone())
+            .map(|(x, t)| Self::abs(x, t));
 
-            abs.or(app).padded()
-        })
+        abs.or(app).padded()
     }
 }
 
@@ -40,15 +40,19 @@ impl Command {
     }
 
     fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
+        let mut term = Recursive::declare();
+
+        term.define(Term::parser(term.clone()));
+
         let eval1 = just(':')
             .then(text::keyword("eval1"))
-            .ignore_then(Term::parser())
+            .ignore_then(term.clone())
             .then_ignore(end())
             .map(Self::Eval1);
         let eval = just(':')
             .then(text::keyword("eval"))
             .or_not()
-            .ignore_then(Term::parser())
+            .ignore_then(term.clone())
             .then_ignore(end())
             .map(Self::Eval);
         let bind = just(':')

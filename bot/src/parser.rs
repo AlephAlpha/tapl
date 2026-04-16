@@ -4,23 +4,23 @@ use std::rc::Rc;
 use util::parser::ParserError;
 
 impl Ty {
-    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
-        recursive(|ty| {
-            let bot = text::keyword("Bot").to(Self::bot());
-            let top = text::keyword("Top").to(Self::top());
+    fn parser<'src>(
+        ty: impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone + 'src,
+    ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
+        let bot = text::keyword("Bot").to(Self::bot());
+        let top = text::keyword("Top").to(Self::top());
 
-            let parens = ty.clone().delimited_by(just('('), just(')'));
+        let parens = ty.clone().delimited_by(just('('), just(')'));
 
-            let atom = choice((bot, top, parens)).padded();
+        let atom = choice((bot, top, parens)).padded();
 
-            let arrow = atom
-                .clone()
-                .then_ignore(just("->"))
-                .repeated()
-                .foldr(atom, Self::arr);
+        let arrow = atom
+            .clone()
+            .then_ignore(just("->"))
+            .repeated()
+            .foldr(atom, Self::arr);
 
-            arrow.padded().labelled("type").boxed()
-        })
+        arrow.padded().labelled("type").boxed()
     }
 }
 
@@ -34,33 +34,36 @@ impl Term {
         Self::ident().or(text::keyword("_").to("_".to_string()))
     }
 
-    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
-        recursive(|term| {
-            let var = Self::ident().map(Self::var);
+    fn parser<'src>(
+        ty: impl Parser<'src, &'src str, Rc<Ty>, ParserError<'src>> + Clone + 'src,
+        term: impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone + 'src,
+    ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
+        let var = Self::ident().map(Self::var);
 
-            let parens = term.clone().delimited_by(just('('), just(')'));
+        let parens = term.clone().delimited_by(just('('), just(')'));
 
-            let atom = choice((parens, var)).padded();
+        let atom = choice((parens, var)).padded();
 
-            let app = atom.clone().foldl(atom.repeated(), Self::app);
+        let app = atom.clone().foldl(atom.repeated(), Self::app);
 
-            let abs = text::keyword("lambda")
-                .ignore_then(Self::ident_or_underscore().padded())
-                .then_ignore(just(':'))
-                .then(Ty::parser())
-                .then_ignore(just('.'))
-                .then(term.clone())
-                .map(|((x, ty), t)| Self::abs(x, ty, t));
+        let abs = text::keyword("lambda")
+            .ignore_then(Self::ident_or_underscore().padded())
+            .then_ignore(just(':'))
+            .then(ty)
+            .then_ignore(just('.'))
+            .then(term.clone())
+            .map(|((x, ty), t)| Self::abs(x, ty, t));
 
-            choice((abs, app)).padded().labelled("term").boxed()
-        })
+        choice((abs, app)).padded().labelled("term").boxed()
     }
 }
 
 impl Binding {
-    fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
+    fn parser<'src>(
+        ty: impl Parser<'src, &'src str, Rc<Ty>, ParserError<'src>> + 'src,
+    ) -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let name = empty().to(Self::Name);
-        let var = just(':').ignore_then(Ty::parser()).map(Self::Var);
+        let var = just(':').ignore_then(ty).map(Self::Var);
 
         choice((var, name)).padded()
     }
@@ -72,27 +75,33 @@ impl Command {
     }
 
     fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
+        let mut ty = Recursive::declare();
+        let mut term = Recursive::declare();
+
+        ty.define(Ty::parser(ty.clone()));
+        term.define(Term::parser(ty.clone(), term.clone()));
+
         let eval1 = just(':')
             .then(text::keyword("eval1"))
-            .ignore_then(Term::parser())
+            .ignore_then(term.clone())
             .then_ignore(end())
             .map(Self::Eval1);
         let eval = just(':')
             .then(text::keyword("eval"))
             .or_not()
-            .ignore_then(Term::parser())
+            .ignore_then(term.clone())
             .then_ignore(end())
             .map(Self::Eval);
         let bind = just(':')
             .then(text::keyword("bind"))
             .or_not()
             .ignore_then(Term::ident().padded())
-            .then(Binding::parser())
+            .then(Binding::parser(ty.clone()))
             .then_ignore(end())
             .map(|(x, b)| Self::Bind(x, b));
         let type_ = just(':')
             .then(text::keyword("type"))
-            .ignore_then(Term::parser())
+            .ignore_then(term.clone())
             .then_ignore(end())
             .map(Self::Type);
         let noop = text::whitespace().then_ignore(end()).to(Self::Noop);

@@ -95,7 +95,7 @@ impl<T> Context<T> {
     }
 
     pub fn is_name_bound(&self, name: &str) -> bool {
-        self.bindings.iter().any(|(n, _)| n == name)
+        self.bindings.iter().any(|(n, _)| n == name && n != "_")
     }
 
     pub fn pick_fresh_name(&self, name: &str) -> String {

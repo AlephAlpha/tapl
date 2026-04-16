@@ -18,7 +18,8 @@ fn main() -> Result<()> {
     let mut ctx = Context::new();
 
     loop {
-        let input = rl.readline("fomsub> ");
+        let input = rl.readline("lf> ");
+
         match input {
             Ok(line) => {
                 rl.add_history_entry(&line).ok();
@@ -39,7 +40,7 @@ fn main() -> Result<()> {
                                 },
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
-                            Command::Bind(x, b) => match b.to_de_bruijn(&mut ctx) {
+                            Command::Bind(x, b) => match b.check(&mut ctx) {
                                 Ok(b_) => {
                                     b_.to_named(&mut ctx).unwrap().print_type(&x);
                                     ctx.add_binding(&x, b_);

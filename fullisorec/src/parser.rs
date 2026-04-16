@@ -8,67 +8,66 @@ impl Ty {
         util::parser::ty_ident(KEYWORDS.iter().copied())
     }
 
-    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
-        recursive(|ty| {
-            let var = Self::ident().map(Self::var);
+    fn parser<'src>(
+        ty: impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone + 'src,
+    ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
+        let var = Self::ident().map(Self::var);
 
-            let string = text::keyword("String").to(Self::string());
-            let bool = text::keyword("Bool").to(Self::bool());
-            let unit = text::keyword("Unit").to(Self::unit());
-            let float = text::keyword("Float").to(Self::float());
-            let nat = text::keyword("Nat").to(Self::nat());
+        let string = text::keyword("String").to(Self::string());
+        let bool = text::keyword("Bool").to(Self::bool());
+        let unit = text::keyword("Unit").to(Self::unit());
+        let float = text::keyword("Float").to(Self::float());
+        let nat = text::keyword("Nat").to(Self::nat());
 
-            let field = text::ident()
-                .padded()
-                .then_ignore(just(':'))
-                .or_not()
-                .then(ty.clone());
+        let field = text::ident()
+            .padded()
+            .then_ignore(just(':'))
+            .or_not()
+            .then(ty.clone());
 
-            let fields = field
-                .separated_by(just(','))
-                .enumerate()
-                .collect::<Vec<_>>()
-                .map(|fields| {
-                    fields
-                        .into_iter()
-                        .map(|(i, (k, v))| {
-                            (
-                                k.map(str::to_owned).unwrap_or_else(|| (i + 1).to_string()),
-                                v,
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                });
+        let fields = field
+            .separated_by(just(','))
+            .enumerate()
+            .collect::<Vec<_>>()
+            .map(|fields| {
+                fields
+                    .into_iter()
+                    .map(|(i, (k, v))| {
+                        (
+                            k.map(str::to_owned).unwrap_or_else(|| (i + 1).to_string()),
+                            v,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            });
 
-            let record = fields
-                .clone()
-                .delimited_by(just('{'), just('}'))
-                .map(Self::record);
+        let record = fields
+            .clone()
+            .delimited_by(just('{'), just('}'))
+            .map(Self::record);
 
-            let variant = fields
-                .clone()
-                .delimited_by(just('<'), just('>'))
-                .map(Self::variant);
+        let variant = fields
+            .clone()
+            .delimited_by(just('<'), just('>'))
+            .map(Self::variant);
 
-            let parens = ty.clone().delimited_by(just('('), just(')'));
+        let parens = ty.clone().delimited_by(just('('), just(')'));
 
-            let atom =
-                choice((string, bool, unit, float, nat, record, variant, parens, var)).padded();
+        let atom = choice((string, bool, unit, float, nat, record, variant, parens, var)).padded();
 
-            let arrow = atom
-                .clone()
-                .then_ignore(just("->"))
-                .repeated()
-                .foldr(atom, Self::arr);
+        let arrow = atom
+            .clone()
+            .then_ignore(just("->"))
+            .repeated()
+            .foldr(atom, Self::arr);
 
-            let rec = text::keyword("Rec")
-                .ignore_then(Self::ident().padded())
-                .then_ignore(just('.'))
-                .then(ty.clone())
-                .map(|(x, ty)| Self::rec(x, ty));
+        let rec = text::keyword("Rec")
+            .ignore_then(Self::ident().padded())
+            .then_ignore(just('.'))
+            .then(ty.clone())
+            .map(|(x, ty)| Self::rec(x, ty));
 
-            arrow.or(rec).padded().labelled("type").boxed()
-        })
+        arrow.or(rec).padded().labelled("type").boxed()
     }
 }
 
@@ -82,196 +81,198 @@ impl Term {
         Self::ident().or(text::keyword("_").to("_".to_string()))
     }
 
-    fn parser<'src>() -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
-        recursive(|term| {
-            let var = Self::ident().map(Self::var);
+    fn parser<'src>(
+        ty: impl Parser<'src, &'src str, Rc<Ty>, ParserError<'src>> + Clone + 'src,
+        term: impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone + 'src,
+    ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
+        let var = Self::ident().map(Self::var);
 
-            let true_ = text::keyword("true").to(Self::true_());
-            let false_ = text::keyword("false").to(Self::false_());
-            let unit = text::keyword("unit").to(Self::unit());
+        let true_ = text::keyword("true").to(Self::true_());
+        let false_ = text::keyword("false").to(Self::false_());
+        let unit = text::keyword("unit").to(Self::unit());
 
-            let string = util::parser::string().map(Self::string);
-            let float = util::parser::float().map(Self::float);
-            let int = util::parser::int().map(Self::from_int);
+        let string = util::parser::string().map(Self::string);
+        let float = util::parser::float().map(Self::float);
+        let int = util::parser::int().map(Self::from_int);
 
-            let field = text::ident()
-                .padded()
-                .then_ignore(just('='))
-                .or_not()
-                .then(term.clone());
+        let field = text::ident()
+            .padded()
+            .then_ignore(just('='))
+            .or_not()
+            .then(term.clone());
 
-            let fields = field
-                .separated_by(just(','))
-                .enumerate()
-                .collect::<Vec<_>>()
-                .map(|fields| {
-                    fields
-                        .into_iter()
-                        .map(|(i, (k, v))| {
-                            (
-                                k.map(str::to_owned).unwrap_or_else(|| (i + 1).to_string()),
-                                v,
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                });
+        let fields = field
+            .separated_by(just(','))
+            .enumerate()
+            .collect::<Vec<_>>()
+            .map(|fields| {
+                fields
+                    .into_iter()
+                    .map(|(i, (k, v))| {
+                        (
+                            k.map(str::to_owned).unwrap_or_else(|| (i + 1).to_string()),
+                            v,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            });
 
-            let record = fields.delimited_by(just('{'), just('}')).map(Self::record);
+        let record = fields.delimited_by(just('{'), just('}')).map(Self::record);
 
-            let tag = text::ident()
-                .padded()
-                .then_ignore(just('='))
-                .then(term.clone())
-                .delimited_by(just('<'), just('>'))
-                .then_ignore(text::keyword("as").padded())
-                .then(Ty::parser())
-                .map(|((l, t1), t2)| Self::tag(l, t1, t2));
+        let tag = text::ident()
+            .padded()
+            .then_ignore(just('='))
+            .then(term.clone())
+            .delimited_by(just('<'), just('>'))
+            .then_ignore(text::keyword("as").padded())
+            .then(ty.clone())
+            .map(|((l, t1), t2)| Self::tag(l, t1, t2));
 
-            let inert = text::keyword("inert")
-                .ignore_then(Ty::parser().delimited_by(just('['), just(']')).padded())
-                .map(Self::inert);
+        let inert = text::keyword("inert")
+            .ignore_then(ty.clone().delimited_by(just('['), just(']')).padded())
+            .map(Self::inert);
 
-            let parens = term.clone().delimited_by(just('('), just(')'));
+        let parens = term.clone().delimited_by(just('('), just(')'));
 
-            let atom = choice((
-                true_, false_, unit, string, float, int, record, tag, inert, parens, var,
-            ))
+        let atom = choice((
+            true_, false_, unit, string, float, int, record, tag, inert, parens, var,
+        ))
+        .padded();
+
+        let ascribe_ = atom
+            .clone()
+            .then_ignore(text::keyword("as"))
+            .then(ty.clone())
+            .map(|(t, ty)| Self::ascribe(t, ty));
+
+        let ascribe = ascribe_.or(atom.clone());
+
+        let path = ascribe
+            .foldl(
+                just('.')
+                    .ignore_then(text::ident().or(text::int(10)).padded())
+                    .repeated(),
+                Self::proj,
+            )
             .padded();
 
-            let ascribe_ = atom
-                .clone()
-                .then_ignore(text::keyword("as"))
-                .then(Ty::parser())
-                .map(|(t, ty)| Self::ascribe(t, ty));
+        let fix = text::keyword("fix")
+            .ignore_then(path.clone())
+            .map(Self::fix);
 
-            let ascribe = ascribe_.or(atom.clone());
+        let times_float = text::keyword("timesfloat")
+            .ignore_then(path.clone())
+            .then(path.clone())
+            .map(|(t1, t2)| Self::times_float(t1, t2));
 
-            let path = ascribe
-                .foldl(
-                    just('.')
-                        .ignore_then(text::ident().or(text::int(10)).padded())
-                        .repeated(),
-                    Self::proj,
-                )
-                .padded();
+        let succ = text::keyword("succ")
+            .ignore_then(path.clone())
+            .map(Self::succ);
 
-            let fix = text::keyword("fix")
-                .ignore_then(path.clone())
-                .map(Self::fix);
+        let pred = text::keyword("pred")
+            .ignore_then(path.clone())
+            .map(Self::pred);
 
-            let times_float = text::keyword("timesfloat")
-                .ignore_then(path.clone())
-                .then(path.clone())
-                .map(|(t1, t2)| Self::times_float(t1, t2));
+        let is_zero = text::keyword("iszero")
+            .ignore_then(path.clone())
+            .map(Self::is_zero);
 
-            let succ = text::keyword("succ")
-                .ignore_then(path.clone())
-                .map(Self::succ);
+        let fold = text::keyword("fold")
+            .ignore_then(ty.clone().delimited_by(just('['), just(']')).padded())
+            .map(Self::fold);
 
-            let pred = text::keyword("pred")
-                .ignore_then(path.clone())
-                .map(Self::pred);
+        let unfold = text::keyword("unfold")
+            .ignore_then(ty.clone().delimited_by(just('['), just(']')).padded())
+            .map(Self::unfold);
 
-            let is_zero = text::keyword("iszero")
-                .ignore_then(path.clone())
-                .map(Self::is_zero);
+        let app = choice((
+            fix,
+            times_float,
+            succ,
+            pred,
+            is_zero,
+            fold,
+            unfold,
+            path.clone(),
+        ))
+        .foldl(path.repeated(), Self::app);
 
-            let fold = text::keyword("fold")
-                .ignore_then(Ty::parser().delimited_by(just('['), just(']')).padded())
-                .map(Self::fold);
+        let if_ = text::keyword("if")
+            .ignore_then(term.clone())
+            .then_ignore(text::keyword("then"))
+            .then(term.clone())
+            .then_ignore(text::keyword("else"))
+            .then(term.clone())
+            .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
 
-            let unfold = text::keyword("unfold")
-                .ignore_then(Ty::parser().delimited_by(just('['), just(']')).padded())
-                .map(Self::unfold);
+        let abs = text::keyword("lambda")
+            .ignore_then(Self::ident_or_underscore().padded())
+            .then_ignore(just(':'))
+            .then(ty.clone())
+            .then_ignore(just('.'))
+            .then(term.clone())
+            .map(|((x, ty), t)| Self::abs(x, ty, t));
 
-            let app = choice((
-                fix,
-                times_float,
-                succ,
-                pred,
-                is_zero,
-                fold,
-                unfold,
-                path.clone(),
-            ))
-            .foldl(path.repeated(), Self::app);
+        let let_ = text::keyword("let")
+            .ignore_then(Self::ident_or_underscore().padded())
+            .then_ignore(just('='))
+            .then(term.clone())
+            .then_ignore(text::keyword("in"))
+            .then(term.clone())
+            .map(|((x, t1), t2)| Self::let_(x, t1, t2));
 
-            let if_ = text::keyword("if")
-                .ignore_then(term.clone())
-                .then_ignore(text::keyword("then"))
-                .then(term.clone())
-                .then_ignore(text::keyword("else"))
-                .then(term.clone())
-                .map(|((t1, t2), t3)| Self::if_(t1, t2, t3));
+        let let_rec = text::keyword("letrec")
+            .ignore_then(Self::ident_or_underscore().padded())
+            .then_ignore(just(':'))
+            .then(ty.clone())
+            .then_ignore(just('='))
+            .then(term.clone())
+            .then_ignore(text::keyword("in"))
+            .then(term.clone())
+            .map(|(((x, ty), t1), t2)| Self::let_(x.clone(), Self::fix(Self::abs(x, ty, t1)), t2));
 
-            let abs = text::keyword("lambda")
-                .ignore_then(Self::ident_or_underscore().padded())
-                .then_ignore(just(':'))
-                .then(Ty::parser())
-                .then_ignore(just('.'))
-                .then(term.clone())
-                .map(|((x, ty), t)| Self::abs(x, ty, t));
+        let cases = text::ident()
+            .padded()
+            .then_ignore(just('='))
+            .then(Self::ident().padded())
+            .delimited_by(just('<'), just('>'))
+            .then_ignore(just("==>").padded())
+            .then(term.clone())
+            .padded()
+            .map(|((l, t1), t2)| (l.to_owned(), t1, t2))
+            .separated_by(just('|'))
+            .at_least(1);
 
-            let let_ = text::keyword("let")
-                .ignore_then(Self::ident_or_underscore().padded())
-                .then_ignore(just('='))
-                .then(term.clone())
-                .then_ignore(text::keyword("in"))
-                .then(term.clone())
-                .map(|((x, t1), t2)| Self::let_(x, t1, t2));
+        let case = text::keyword("case")
+            .ignore_then(term.clone())
+            .then_ignore(text::keyword("of"))
+            .then(cases.collect::<Vec<_>>())
+            .map(|(t, cases)| Self::case(t, cases));
 
-            let let_rec = text::keyword("letrec")
-                .ignore_then(Self::ident_or_underscore().padded())
-                .then_ignore(just(':'))
-                .then(Ty::parser())
-                .then_ignore(just('='))
-                .then(term.clone())
-                .then_ignore(text::keyword("in"))
-                .then(term.clone())
-                .map(|(((x, ty), t1), t2)| {
-                    Self::let_(x.clone(), Self::fix(Self::abs(x, ty, t1)), t2)
-                });
-
-            let cases = text::ident()
-                .padded()
-                .then_ignore(just('='))
-                .then(Self::ident().padded())
-                .delimited_by(just('<'), just('>'))
-                .then_ignore(just("==>").padded())
-                .then(term.clone())
-                .padded()
-                .map(|((l, t1), t2)| (l.to_owned(), t1, t2))
-                .separated_by(just('|'))
-                .at_least(1);
-
-            let case = text::keyword("case")
-                .ignore_then(term.clone())
-                .then_ignore(text::keyword("of"))
-                .then(cases.collect::<Vec<_>>())
-                .map(|(t, cases)| Self::case(t, cases));
-
-            choice((if_, abs, let_, let_rec, case, app))
-                .padded()
-                .labelled("term")
-                .boxed()
-        })
+        choice((if_, abs, let_, let_rec, case, app))
+            .padded()
+            .labelled("term")
+            .boxed()
     }
 }
 
 impl Binding {
-    fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
+    fn parser<'src>(
+        ty: impl Parser<'src, &'src str, Rc<Ty>, ParserError<'src>> + 'src,
+        term: impl Parser<'src, &'src str, Rc<Term>, ParserError<'src>> + 'src,
+    ) -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let name = empty().to(Self::Name);
-        let term = just('=')
-            .ignore_then(Term::parser())
-            .map(|t| Self::TermAbb(t, None));
-        let var = just(':').ignore_then(Ty::parser()).map(Self::Var);
+        let term = just('=').ignore_then(term).map(|t| Self::TermAbb(t, None));
+        let var = just(':').ignore_then(ty).map(Self::Var);
 
         choice((term, var, name)).padded()
     }
 
-    fn ty_parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
+    fn ty_parser<'src>(
+        ty: impl Parser<'src, &'src str, Rc<Ty>, ParserError<'src>> + 'src,
+    ) -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let ty_var = empty().to(Self::TyVar);
-        let ty_abb = just('=').ignore_then(Ty::parser()).map(Self::TyAbb);
+        let ty_abb = just('=').ignore_then(ty).map(Self::TyAbb);
 
         choice((ty_abb, ty_var)).padded()
     }
@@ -283,15 +284,21 @@ impl Command {
     }
 
     fn parser<'src>() -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
+        let mut ty = Recursive::declare();
+        let mut term = Recursive::declare();
+
+        ty.define(Ty::parser(ty.clone()));
+        term.define(Term::parser(ty.clone(), term.clone()));
+
         let eval1 = just(':')
             .then(text::keyword("eval1"))
-            .ignore_then(Term::parser())
+            .ignore_then(term.clone())
             .then_ignore(end())
             .map(Self::Eval1);
         let eval = just(':')
             .then(text::keyword("eval"))
             .or_not()
-            .ignore_then(Term::parser())
+            .ignore_then(term.clone())
             .then_ignore(end())
             .map(Self::Eval);
         let bind = just(':')
@@ -300,14 +307,14 @@ impl Command {
             .ignore_then(
                 Term::ident()
                     .padded()
-                    .then(Binding::parser())
-                    .or(Ty::ident().padded().then(Binding::ty_parser())),
+                    .then(Binding::parser(ty.clone(), term.clone()))
+                    .or(Ty::ident().padded().then(Binding::ty_parser(ty.clone()))),
             )
             .then_ignore(end())
             .map(|(x, b)| Self::Bind(x, b));
         let type_ = just(':')
             .then(text::keyword("type"))
-            .ignore_then(Term::parser())
+            .ignore_then(term.clone())
             .then_ignore(end())
             .map(Self::Type);
         let noop = text::whitespace().then_ignore(end()).to(Self::Noop);
