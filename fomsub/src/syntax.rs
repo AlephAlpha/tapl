@@ -60,7 +60,7 @@ impl Kind {
         match self {
             Self::Arr(t1, t2) => {
                 t1.fmt_atom(f)?;
-                write!(f, " -> ")?;
+                write!(f, " => ")?;
                 t2.fmt_arrow(f)
             }
             t => t.fmt_atom(f),
