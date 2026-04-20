@@ -6,17 +6,18 @@ use util::parser::ParserError;
 impl Kind {
     fn parser<'src>(
         ty: impl Parser<'src, &'src str, Rc<Ty>, ParserError<'src>> + Clone + 'src,
+        term: impl Parser<'src, &'src str, Rc<Term>, ParserError<'src>> + Clone + 'src,
     ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         let star = just('*').to(Self::star());
 
-        let atom_ty = Ty::atom_parser(ty.clone());
+        let ty_app = Ty::app_parser(ty.clone(), term);
 
         let pi = text::keyword("Pi")
             .ignore_then(Term::ident_or_underscore().padded())
             .then_ignore(just(":"))
             .then(ty)
             .then_ignore(just('.'))
-            .or(atom_ty
+            .or(ty_app
                 .then_ignore(just("->"))
                 .map(|ty| ("_".to_string(), ty)))
             .padded()
@@ -32,23 +33,28 @@ impl Ty {
         util::parser::ty_ident(KEYWORDS.iter().copied())
     }
 
-    fn atom_parser<'src>(
+    fn app_parser<'src>(
         ty: impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone + 'src,
+        term: impl Parser<'src, &'src str, Rc<Term>, ParserError<'src>> + Clone + 'src,
     ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         let var = Self::ident().map(Self::var);
 
         let parens = ty.delimited_by(just('('), just(')'));
 
-        var.or(parens).padded().labelled("type atom").boxed()
+        let atom = var.or(parens).padded();
+
+        let atom_term = Term::atom_parser(term);
+
+        let app = atom.clone().foldl(atom_term.repeated(), Self::app);
+
+        app.labelled("type application").boxed()
     }
 
     fn parser<'src>(
         ty: impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone + 'src,
         term: impl Parser<'src, &'src str, Rc<Term>, ParserError<'src>> + Clone + 'src,
     ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
-        let atom = Self::atom_parser(ty.clone());
-
-        let app = atom.clone().foldl(term.repeated(), Self::app);
+        let app = Self::app_parser(ty.clone(), term);
 
         let arrow = app
             .clone()
@@ -78,15 +84,21 @@ impl Term {
         Self::ident().or(text::keyword("_").to("_".to_string()))
     }
 
-    fn parser<'src>(
-        ty: impl Parser<'src, &'src str, Rc<Ty>, ParserError<'src>> + Clone + 'src,
+    fn atom_parser<'src>(
         term: impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone + 'src,
     ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
         let var = Self::ident().map(Self::var);
 
-        let parens = term.clone().delimited_by(just('('), just(')'));
+        let parens = term.delimited_by(just('('), just(')'));
 
-        let atom = var.or(parens).padded();
+        var.or(parens).padded().labelled("term atom").boxed()
+    }
+
+    fn parser<'src>(
+        ty: impl Parser<'src, &'src str, Rc<Ty>, ParserError<'src>> + Clone + 'src,
+        term: impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone + 'src,
+    ) -> impl Parser<'src, &'src str, Rc<Self>, ParserError<'src>> + Clone {
+        let atom = Self::atom_parser(term.clone());
 
         let app = atom.clone().foldl(atom.clone().repeated(), Self::app);
 
@@ -131,7 +143,7 @@ impl Command {
         let mut ty = Recursive::declare();
         let mut term = Recursive::declare();
 
-        kind.define(Kind::parser(ty.clone()));
+        kind.define(Kind::parser(ty.clone(), term.clone()));
         ty.define(Ty::parser(ty.clone(), term.clone()));
         term.define(Term::parser(ty.clone(), term.clone()));
 

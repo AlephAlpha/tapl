@@ -42,7 +42,7 @@ impl<V: Display> Display for Kind<V> {
             Self::Star => write!(f, "*"),
             Self::Pi(x, ty, kn) => {
                 if x == "_" {
-                    ty.fmt_atom(f)?;
+                    ty.fmt_app(f)?;
                     write!(f, " -> {kn}")
                 } else {
                     write!(f, "Pi {x}: {ty}. {kn}")
