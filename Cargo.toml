@@ -27,6 +27,7 @@ members = [
     "linear",
     "order",
     "lf",
+    "cc",
 ]
 resolver = "3"
 
