@@ -79,7 +79,7 @@ impl<V: Display> Ty<V> {
     fn fmt_arrow(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Pi(x, ty1, ty2) if x == "_" => {
-                ty1.fmt_arrow(f)?;
+                ty1.fmt_app(f)?;
                 write!(f, " -> ")?;
                 ty2.fmt_arrow(f)
             }

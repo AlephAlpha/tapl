@@ -102,11 +102,11 @@ impl DeBruijnTerm {
         t
     }
 
-    fn eval1_wh(&self, ctx: &Context) -> Result<Rc<Self>> {
+    fn eval1_wh(&self, _ctx: &Context) -> Result<Rc<Self>> {
         match self {
             Self::App(t1, t2) => match t1.as_ref() {
                 Self::Abs(_, _, t) => t.subst_top(t2),
-                _ => Ok(Self::app(t1.eval1(ctx)?, t2.clone())),
+                _ => Ok(Self::app(t1.eval1_wh(_ctx)?, t2.clone())),
             },
             _ => Err(Error::NoRuleApplies),
         }

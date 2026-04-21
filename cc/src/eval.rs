@@ -107,8 +107,12 @@ impl Ty {
 }
 
 impl DeBruijnTerm {
-    const fn is_val(&self, _ctx: &Context) -> bool {
-        matches!(self, Self::Abs(_, _, _) | Self::All(_, _, _))
+    fn is_val(&self, _ctx: &Context) -> bool {
+        match self {
+            Self::Abs(_, _, _) => true,
+            Self::All(_, _, t) => t.is_val(_ctx),
+            _ => false,
+        }
     }
 
     pub fn eval1(&self, ctx: &Context) -> Result<Rc<Self>> {
@@ -123,6 +127,9 @@ impl DeBruijnTerm {
                     }
                 }
             },
+            Self::All(x, ty, t) if !t.is_val(ctx) => {
+                Ok(Self::all(x.clone(), ty.clone(), t.eval1(ctx)?))
+            }
             Self::Var(i) => match ctx.get_binding_shifting(*i) {
                 Ok(Binding::TermAbb(t, _)) => Ok(t),
                 _ => Err(Error::NoRuleApplies),
@@ -143,7 +150,7 @@ impl DeBruijnTerm {
         match self {
             Self::App(t1, t2) => match t1.as_ref() {
                 Self::Abs(_, _, t) => t.subst_top(t2),
-                _ => Ok(Self::app(t1.eval1(ctx)?, t2.clone())),
+                _ => Ok(Self::app(t1.eval1_wh(ctx)?, t2.clone())),
             },
             Self::Var(i) => match ctx.get_binding_shifting(*i) {
                 Ok(Binding::TermAbb(t, _)) => Ok(t),
