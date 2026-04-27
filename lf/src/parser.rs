@@ -116,12 +116,17 @@ impl Term {
 
 impl Binding {
     fn parser<'src>(
-        ty: impl Parser<'src, &'src str, Rc<Ty>, ParserError<'src>> + 'src,
+        ty: impl Parser<'src, &'src str, Rc<Ty>, ParserError<'src>> + Clone + 'src,
+        term: impl Parser<'src, &'src str, Rc<Term>, ParserError<'src>> + 'src,
     ) -> impl Parser<'src, &'src str, Self, ParserError<'src>> {
         let name = empty().to(Self::Name);
+        let abb = just('=')
+            .ignore_then(term)
+            .then(just(':').ignore_then(ty.clone()).or_not())
+            .map(|(t, ty)| Self::TermAbb(t, ty));
         let var = just(':').ignore_then(ty).map(Self::Var);
 
-        var.or(name).padded()
+        choice((abb, var, name)).padded()
     }
 
     fn ty_parser<'src>(
@@ -164,7 +169,7 @@ impl Command {
             .ignore_then(
                 Term::ident()
                     .padded()
-                    .then(Binding::parser(ty.clone()))
+                    .then(Binding::parser(ty.clone(), term.clone()))
                     .or(Ty::ident().padded().then(Binding::ty_parser(kind.clone()))),
             )
             .then_ignore(end())

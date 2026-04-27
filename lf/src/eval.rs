@@ -74,8 +74,12 @@ impl Ty {
 }
 
 impl DeBruijnTerm {
-    const fn is_val(&self, _ctx: &Context) -> bool {
-        matches!(self, Self::Abs(_, _, _))
+    fn is_val(&self, ctx: &Context) -> bool {
+        match self {
+            Self::Abs(_, _, _) => true,
+            Self::Var(i) => matches!(ctx.get_binding_shifting(*i), Ok(Binding::Var(_))),
+            _ => false,
+        }
     }
 
     pub fn eval1(&self, ctx: &Context) -> Result<Rc<Self>> {
@@ -90,6 +94,10 @@ impl DeBruijnTerm {
                     }
                 }
             },
+            Self::Var(i) => match ctx.get_binding_shifting(*i) {
+                Ok(Binding::TermAbb(t, _)) => Ok(t),
+                _ => Err(Error::NoRuleApplies),
+            },
             _ => Err(Error::NoRuleApplies),
         }
     }
@@ -102,11 +110,15 @@ impl DeBruijnTerm {
         t
     }
 
-    fn eval1_wh(&self, _ctx: &Context) -> Result<Rc<Self>> {
+    fn eval1_wh(&self, ctx: &Context) -> Result<Rc<Self>> {
         match self {
             Self::App(t1, t2) => match t1.as_ref() {
                 Self::Abs(_, _, t) => t.subst_top(t2),
-                _ => Ok(Self::app(t1.eval1_wh(_ctx)?, t2.clone())),
+                _ => Ok(Self::app(t1.eval1_wh(ctx)?, t2.clone())),
+            },
+            Self::Var(i) => match ctx.get_binding_shifting(*i) {
+                Ok(Binding::TermAbb(t, _)) => Ok(t),
+                _ => Err(Error::NoRuleApplies),
             },
             _ => Err(Error::NoRuleApplies),
         }
@@ -123,7 +135,7 @@ impl DeBruijnTerm {
     fn eqv_wh(&self, other: &Self, ctx: &mut Context) -> bool {
         match (self, other) {
             (Self::Var(x), Self::Var(y)) => x == y,
-            (Self::App(t1, t2), Self::App(t1_, t2_)) => t1.eqv_wh(t1_, ctx) && t2.eqv_wh(t2_, ctx),
+            (Self::App(t1, t2), Self::App(t1_, t2_)) => t1.eqv_wh(t1_, ctx) && t2.eqv(t2_, ctx),
             (Self::Abs(x, ty1, t1), Self::Abs(_, ty1_, t1_)) => {
                 ty1.eqv(ty1_, ctx)
                     && ctx
@@ -150,6 +162,7 @@ impl DeBruijnTerm {
         match self {
             Self::Var(i) => match ctx.get_binding_shifting(*i)? {
                 Binding::Var(ty) => Ok(ty),
+                Binding::TermAbb(_, Some(ty)) => Ok(ty),
                 _ => Err(Error::TypeError(format!(
                     "Wrong type of binding for variable {}",
                     ctx.index_to_name(*i).unwrap()
@@ -193,13 +206,32 @@ impl Term {
 }
 
 impl DeBruijnBinding {
-    pub fn check(&self, ctx: &mut Context) -> Result<Self> {
+    fn eval(&self, ctx: &Context) -> Self {
+        match self {
+            Self::TermAbb(t, ty) => Self::TermAbb(t.eval(ctx), ty.clone()),
+            _ => self.clone(),
+        }
+    }
+
+    fn check(&self, ctx: &mut Context) -> Result<Self> {
         match self {
             Self::Var(ty) => {
                 if matches!(ty.kind_of(ctx)?.as_ref(), Kind::Star) {
                     Ok(Self::Var(ty.clone()))
                 } else {
                     Err(Error::KindError("Star kind expected".to_string()))
+                }
+            }
+            Self::TermAbb(t, ty) => {
+                let ty_ = t.type_of(ctx)?;
+                if let Some(ty) = ty {
+                    if matches!(ty.kind_of(ctx)?.as_ref(), Kind::Star) && ty_.eqv(ty, ctx) {
+                        Ok(Self::TermAbb(t.clone(), Some(ty.clone())))
+                    } else {
+                        Err(Error::TypeMismatch)
+                    }
+                } else {
+                    Ok(Self::TermAbb(t.clone(), Some(ty_)))
                 }
             }
             Self::TyVar(kn) => {
@@ -209,10 +241,14 @@ impl DeBruijnBinding {
             _ => Ok(self.clone()),
         }
     }
+
+    pub fn check_and_eval(&self, ctx: &mut Context) -> Result<Self> {
+        self.check(ctx).map(|b| b.eval(ctx))
+    }
 }
 
 impl Binding {
-    pub fn check(&self, ctx: &mut Context) -> Result<DeBruijnBinding> {
-        self.to_de_bruijn(ctx)?.check(ctx)
+    pub fn check_and_eval(&self, ctx: &mut Context) -> Result<DeBruijnBinding> {
+        self.to_de_bruijn(ctx)?.check_and_eval(ctx)
     }
 }

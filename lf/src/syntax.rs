@@ -126,6 +126,7 @@ pub enum Binding<V = String> {
     #[default]
     Name,
     Var(Rc<Ty<V>>),
+    TermAbb(Rc<Term<V>>, Option<Rc<Ty<V>>>),
     TyVar(Rc<Kind<V>>),
 }
 
@@ -136,6 +137,7 @@ impl<V: Display> Binding<V> {
     pub fn print_type(&self, x: &str) {
         match self {
             Self::Var(ty) => println!("{x} : {ty}"),
+            Self::TermAbb(_, Some(ty)) => println!("{x} : {ty}"),
             Self::TyVar(kn) => println!("{x} :: {kn}"),
             _ => {}
         }
@@ -328,6 +330,9 @@ impl BindingShift for DeBruijnBinding {
     fn shift(&self, d: isize) -> Result<Self> {
         Ok(match self {
             Self::Name => Self::Name,
+            Self::TermAbb(t, ty) => {
+                Self::TermAbb(t.shift(d)?, ty.as_ref().map(|ty| ty.shift(d)).transpose()?)
+            }
             Self::Var(ty) => Self::Var(ty.shift(d)?),
             Self::TyVar(kn) => Self::TyVar(kn.shift(d)?),
         })
@@ -430,20 +435,28 @@ impl Term {
 
 impl Binding {
     pub fn to_de_bruijn(&self, ctx: &mut Context) -> Result<DeBruijnBinding> {
-        Ok(match self {
-            Self::Name => DeBruijnBinding::Name,
-            Self::Var(ty) => DeBruijnBinding::Var(ty.to_de_bruijn(ctx)?),
-            Self::TyVar(kn) => DeBruijnBinding::TyVar(kn.to_de_bruijn(ctx)?),
-        })
+        match self {
+            Self::Name => Ok(DeBruijnBinding::Name),
+            Self::Var(ty) => Ok(DeBruijnBinding::Var(ty.to_de_bruijn(ctx)?)),
+            Self::TermAbb(t, ty) => Ok(DeBruijnBinding::TermAbb(
+                t.to_de_bruijn(ctx)?,
+                ty.as_ref().map(|ty| ty.to_de_bruijn(ctx)).transpose()?,
+            )),
+            Self::TyVar(kn) => Ok(DeBruijnBinding::TyVar(kn.to_de_bruijn(ctx)?)),
+        }
     }
 }
 
 impl DeBruijnBinding {
     pub fn to_named(&self, ctx: &mut Context) -> Result<Binding> {
-        Ok(match self {
-            Self::Name => Binding::Name,
-            Self::Var(ty) => Binding::Var(ty.to_named(ctx)?),
-            Self::TyVar(kn) => Binding::TyVar(kn.to_named(ctx)?),
-        })
+        match self {
+            Self::Name => Ok(Binding::Name),
+            Self::Var(ty) => Ok(Binding::Var(ty.to_named(ctx)?)),
+            Self::TermAbb(t, ty) => Ok(Binding::TermAbb(
+                t.to_named(ctx)?,
+                ty.as_ref().map(|ty| ty.to_named(ctx)).transpose()?,
+            )),
+            Self::TyVar(kn) => Ok(Binding::TyVar(kn.to_named(ctx)?)),
+        }
     }
 }

@@ -40,7 +40,7 @@ fn main() -> Result<()> {
                                 },
                                 Err(err) => eprintln!("Type error: {err}"),
                             },
-                            Command::Bind(x, b) => match b.check(&mut ctx) {
+                            Command::Bind(x, b) => match b.check_and_eval(&mut ctx) {
                                 Ok(b_) => {
                                     b_.to_named(&mut ctx).unwrap().print_type(&x);
                                     ctx.add_binding(&x, b_);

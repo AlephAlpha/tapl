@@ -107,10 +107,11 @@ impl Ty {
 }
 
 impl DeBruijnTerm {
-    fn is_val(&self, _ctx: &Context) -> bool {
+    fn is_val(&self, ctx: &Context) -> bool {
         match self {
             Self::Abs(_, _, _) => true,
-            Self::All(_, _, t) => t.is_val(_ctx),
+            Self::All(_, _, t) => t.is_val(ctx),
+            Self::Var(i) => matches!(ctx.get_binding_shifting(*i), Ok(Binding::Var(_))),
             _ => false,
         }
     }
@@ -171,7 +172,7 @@ impl DeBruijnTerm {
     fn eqv_wh(&self, other: &Self, ctx: &mut Context) -> bool {
         match (self, other) {
             (Self::Var(x), Self::Var(y)) => x == y,
-            (Self::App(t1, t2), Self::App(t1_, t2_)) => t1.eqv_wh(t1_, ctx) && t2.eqv_wh(t2_, ctx),
+            (Self::App(t1, t2), Self::App(t1_, t2_)) => t1.eqv_wh(t1_, ctx) && t2.eqv(t2_, ctx),
             (Self::Abs(x, ty1, t1), Self::Abs(_, ty1_, t1_)) => {
                 ty1.eqv(ty1_, ctx)
                     && ctx
